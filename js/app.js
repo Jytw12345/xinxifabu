@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const $ = (s) => document.querySelector(s);
-  const APPV = 'v41';
+  const APPV = 'v42';
 
   // ---------- PWA 安装引导（尽早监听，浏览器触发 beforeinstallprompt 即提示） ----------
   let deferredPrompt = null;
@@ -1249,12 +1249,18 @@
     el.innerHTML = `<div class="form-card">
       <label>需求标题</label>
       <input id="pTitle" placeholder="如：A4 双面画册设计" maxlength="40" />
-      <label>任务类型</label>
-      <select id="pType">${opts}</select>
+      <div class="form-row">
+        <div>
+          <label>任务类型</label>
+          <select id="pType">${opts}</select>
+        </div>
+        <div>
+          <label>预算（元，可留空=面议）</label>
+          <input id="pBudget" type="number" min="0" placeholder="0" />
+        </div>
+      </div>
       <label>需求描述</label>
       <textarea id="pDesc" placeholder="尺寸、风格、数量、交付格式等…"></textarea>
-      <label>预算（元，可留空=面议）</label>
-      <input id="pBudget" type="number" min="0" placeholder="0" />
       <label>优惠券（可选）</label>
       <div class="coupon-row">
         <select id="pCoupon" class="coupon-sel">
@@ -1263,16 +1269,23 @@
         <input id="pCouponCode" class="coupon-code" type="text" placeholder="或填活动码，如 HALF50" />
       </div>
       <div id="pCouponInfo" class="coupon-info" style="display:none"></div>
-      <label>期望交稿时间（可留空=不限）</label>
-      <input id="pDeadline" type="datetime-local" />
-      <label class="privacy-card privacy-toggle">
-        <input id="pHidePublisher" type="checkbox" />
-        <span class="privacy-switch"></span>
-        <span class="privacy-text">
-          <b>未接单前隐藏我的个人信息</b>
-          <small>开启后在大厅仅显示「平台用户」，被设计师接单后再向对方公开</small>
-        </span>
-      </label>
+      <div class="form-row">
+        <div>
+          <label>期望交稿时间（可留空=不限）</label>
+          <input id="pDeadline" type="datetime-local" />
+        </div>
+        <div>
+          <label>隐私设置</label>
+          <label class="privacy-card privacy-toggle" style="margin:0">
+            <input id="pHidePublisher" type="checkbox" />
+            <span class="privacy-switch"></span>
+            <span class="privacy-text">
+              <b>未接单前隐藏个人信息</b>
+              <small>接单后向设计师公开</small>
+            </span>
+          </label>
+        </div>
+      </div>
       <label>参考图/素材（可选，最多 6 张）</label>
       <input id="pFiles" type="file" accept="image/*" multiple />
       <div id="pUploads" class="chat-uploads" style="display:none"></div>

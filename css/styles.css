@@ -200,6 +200,14 @@ input { font-family: inherit; }
 }
 .form-card input:focus, .form-card select:focus, .form-card textarea:focus { border-color: #2563eb; }
 .form-card textarea { resize: vertical; min-height: 90px; }
+/* 发布页：一行多列，节省垂直空间（桌面两列，窄屏自动堆叠） */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.form-row > div { min-width: 0; }
+.form-card .form-row > div > label { margin: 0 0 6px; }
+@media (max-width: 520px) {
+  .form-row { grid-template-columns: 1fr; gap: 0; }
+  .form-row > div + div { margin-top: 12px; }
+}
 
 /* 空态 */
 .empty { text-align: center; color: #94a3b8; padding: 48px 16px; }
