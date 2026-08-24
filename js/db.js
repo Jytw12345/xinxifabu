@@ -158,6 +158,32 @@
       ]);
       return { open: open.count || 0, mine: mine.count || 0, progress: progress.count || 0 };
     },
+    // 个人概览：我发布 / 我抢到 / 已完成 / 可用券（失败返回 0）
+    async getUserStats(uid) {
+      try {
+        const [published, grabbed, doneGrabbed] = await Promise.all([
+          client.from('dr_requirements').select('*', { count: 'exact', head: true })
+            .eq('publisher_id', uid).not('status', 'eq', 'cancelled').is('deleted_at', null),
+          client.from('dr_requirements').select('*', { count: 'exact', head: true })
+            .eq('locked_by', uid).not('status', 'eq', 'cancelled').is('deleted_at', null),
+          client.from('dr_requirements').select('*', { count: 'exact', head: true })
+            .eq('locked_by', uid).eq('status', 'done').is('deleted_at', null)
+        ]);
+        const { data: cds } = await client.from('dr_coupons')
+          .select('used_at, expire_at, active')
+          .or(`owner_id.eq.${uid},and(owner_id.is.null,active.eq.true)`);
+        const now = Date.now();
+        const couponCount = (cds || []).filter(c =>
+          !c.used_at && (c.expire_at == null || new Date(c.expire_at).getTime() > now)
+        ).length;
+        return {
+          published: published.count || 0,
+          grabbed: grabbed.count || 0,
+          doneGrabbed: doneGrabbed.count || 0,
+          coupons: couponCount
+        };
+      } catch (e) { return { published: 0, grabbed: 0, doneGrabbed: 0, coupons: 0 }; }
+    },
     // 全局消息订阅（Inbox 未读刷新用）：服务端 RLS 限制只能看到我参与的会话消息
     subscribeAllMessages(cb) {
       const ch = client.channel('dr_inbox')
@@ -245,6 +271,30 @@
       return (data || []).filter(c =>
         !c.used_at && (c.expire_at == null || new Date(c.expire_at).getTime() > now)
       );
+    },
+    // 选人器：按姓名/邮箱模糊搜索设计师（读 designers，RLS 对所有人开放 select=true）
+    // 返回 [{auth_id, name, email, role}]，用于后台发券定向指定会员
+    async listDesignersForPicker(q) {
+      try {
+        let qb = client.from('designers').select('auth_id,name,email,role');
+        const safe = (q || '').replace(/[%_'"]/g, '').trim();
+        if (safe) {
+          qb = qb.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
+        }
+        const { data, error } = await qb.order('name').limit(50);
+        if (error) throw error;
+        return (data || []).filter(d => d.auth_id);
+      } catch (e) { return []; }
+    },
+    // 按 auth_id 取单个设计师（编辑专属券时回填姓名）
+    async getDesignerByAuthId(authId) {
+      if (!authId) return null;
+      try {
+        const { data, error } = await client.from('designers')
+          .select('auth_id,name,email,role').eq('auth_id', authId).maybeSingle();
+        if (error) throw error;
+        return data || null;
+      } catch (e) { return null; }
     },
     // 计算折后价：传入预算、券码、当前用户；返回 { ok, final_amount, discount, msg }
     async calcAmount(budget, code, uid) {

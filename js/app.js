@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const $ = (s) => document.querySelector(s);
-  const APPV = 'v31';
+  const APPV = 'v41';
 
   // ---------- PWA 安装引导（尽早监听，浏览器触发 beforeinstallprompt 即提示） ----------
   let deferredPrompt = null;
@@ -69,6 +69,22 @@
     const sameDay = d.toDateString() === n.toDateString();
     return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm}`;
   }
+  // 对外版本用相对时间（更友好），hover 或详情里再显示具体 fmtTime
+  function timeAgo(ts) {
+    if (!ts) return '';
+    const d = new Date(ts), n = new Date();
+    const diff = n - d;
+    if (diff < 0) return fmtTime(ts);
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return '刚刚';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}分钟前`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h}小时前`;
+    const day = Math.floor(h / 24);
+    if (day < 7) return `${day}天前`;
+    return fmtTime(ts);
+  }
   // 倒计时：返回 { html, overdue }；deadline=null 返回空
   function countdownHtml(deadline) {
     if (!deadline) return '';
@@ -99,7 +115,7 @@
     return !r.hide_publisher;   // 未隐藏或可公开
   }
   function visiblePublisherName(r) {
-    return canSeePublisher(r) ? (r.publisher_name || '匿名') : '匿名发布者';
+    return canSeePublisher(r) ? (r.publisher_name || '平台用户') : '平台用户';
   }
   function statusBadge(st) {
     const s = Cfg.STATUS[st] || { label: st, color: '#64748b' };
@@ -278,7 +294,7 @@
   async function switchTab(tab) {
     state.tab = tab;
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    const titleMap = { board: '需求大厅', mine: '我发布的', grabbed: '我抢的', coupons: '我的券包', publish: '发布需求' };
+    const titleMap = { board: '需求大厅', mine: '我发布的', grabbed: '我接的', coupons: '我的券包', publish: '发布需求' };
     $('.topbar-title').textContent = titleMap[tab] || '需求大厅';
     const fab = $('#fabPublish');
     if (fab) fab.classList.toggle('hide-fab', tab === 'publish');
@@ -331,21 +347,64 @@
       ['newest', '最新发布'], ['deadline', '最近截止'],
       ['budget_high', '金额高→低'], ['budget_low', '金额低→高']
     ].map(([v, l]) => `<option value="${v}" ${boardSort === v ? 'selected' : ''}>${l}</option>`).join('');
-    el.innerHTML = `<div class="filter-bar">
-      <div class="stats-row">
-        <div class="stat-card" data-stat="open"><div class="stat-label">可抢单</div><div class="stat-num" id="statOpen">–</div></div>
-        <div class="stat-card" data-stat="mine"><div class="stat-label">我发布</div><div class="stat-num" id="statMine">–</div></div>
-        <div class="stat-card" data-stat="progress"><div class="stat-label">进行中</div><div class="stat-num" id="statProgress">–</div></div>
+    el.innerHTML = `<div class="board-hero">
+      <div class="hero-banner" id="heroBanner">
+        <div class="hero-banner-main">
+          <div class="hero-banner-kicker">设计需求平台</div>
+          <div class="hero-banner-text" id="heroBannerText">发布设计需求，匹配专业设计师</div>
+          <div class="hero-dots" id="heroDots"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" data-tab="publish">＋ 发布需求</button>
       </div>
-      <div class="search-row">
-        <input id="boardSearch" placeholder="搜索标题或描述关键字…" value="${esc(kw)}" />
+      <div class="me-stats" id="meStats">
+        <div class="me-stat" data-stat="published"><div class="me-stat-num" id="mePublished">–</div><div class="me-stat-label">我发布</div></div>
+        <div class="me-stat" data-stat="grabbed"><div class="me-stat-num" id="meGrabbed">–</div><div class="me-stat-label">我接单</div></div>
+        <div class="me-stat" data-stat="done"><div class="me-stat-num" id="meDone">–</div><div class="me-stat-label">已完成</div></div>
+        <div class="me-stat" data-stat="coupons"><div class="me-stat-num" id="meCoupons">–</div><div class="me-stat-label">可用券</div></div>
+      </div>
+    </div>
+    <div class="featured-strip" id="featuredStrip"><span class="featured-label">🔥 精选</span><div class="featured-items" id="featuredItems">加载中…</div></div>
+    <div class="filter-bar">
+      <div class="filter-top">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input id="boardSearch" placeholder="搜索标题、描述…" value="${esc(kw)}" />
+        </div>
+        <div class="filter-pills">
+          <select id="boardStatus">${statusOpts}</select>
+          <select id="boardSort">${sortOpts}</select>
+        </div>
       </div>
       <div class="chip-row" id="boardTypeChips">${typeChips}</div>
-      <div class="filter-row cols-2">
-        <select id="boardStatus">${statusOpts}</select>
-        <select id="boardSort">${sortOpts}</select>
-      </div>
     </div><div id="boardList"></div><div id="boardMore" class="load-more-wrap" style="display:none"><button id="boardMoreBtn" class="btn load-more">加载更多</button></div>`;
+
+    // 大厅顶部静态标语 + 个人概览 + 精选推荐
+    if (state._heroTimer) { clearInterval(state._heroTimer); state._heroTimer = null; }
+    el.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    // 个人概览
+    try {
+      const ms = await DB.getUserStats(state.uid);
+      const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+      set('#mePublished', ms.published); set('#meGrabbed', ms.grabbed);
+      set('#meDone', ms.doneGrabbed); set('#meCoupons', ms.coupons);
+    } catch (e) {}
+    // 精选推荐：预算最高的在抢需求，以横向小条展示
+    try {
+      const fres = await DB.listBoard({ status: 'open', sort: 'budget_high', limit: 5, offset: 0 });
+      const fi = $('#featuredItems');
+      if (fi) {
+        if (fres.list && fres.list.length) {
+          fi.innerHTML = fres.list.map(r =>
+            `<button class="featured-item" data-detail-id="${r.id}">` +
+              `<span class="fi-title">${esc(r.title || '未命名')}</span>` +
+              `<span class="fi-amt"><small>预算</small> ¥${Number(r.budget || 0).toLocaleString('zh-CN')}</span>` +
+            `</button>`
+          ).join('');
+          fi.querySelectorAll('[data-detail-id]').forEach(b =>
+            b.addEventListener('click', () => openDetail(b.dataset.detailId)));
+        } else { fi.innerHTML = '<span class="featured-empty">暂无高预算需求</span>'; }
+      }
+    } catch (e) { const fi = $('#featuredItems'); if (fi) fi.innerHTML = '<span class="featured-empty">精选加载失败</span>'; }
 
     let kwTimer = null;
     $('#boardSearch').addEventListener('input', (e) => {
@@ -361,11 +420,12 @@
       $('#boardTypeChips').querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c === chip));
       doBoardRefresh();
     });
-    document.querySelectorAll('.stat-card').forEach(card => {
+    document.querySelectorAll('.me-stat[data-stat]').forEach(card => {
       card.addEventListener('click', () => {
         const s = card.dataset.stat;
-        if (s === 'mine') { switchTab('mine'); return; }
-        state.boardStatus = s === 'progress' ? 'in_progress' : 'open';
+        if (s === 'published') { switchTab('mine'); return; }
+        if (s === 'coupons') { switchTab('coupons'); return; }
+        state.boardStatus = s === 'done' ? 'done' : 'in_progress';
         const sel = $('#boardStatus'); if (sel) sel.value = state.boardStatus;
         doBoardRefresh();
       });
@@ -476,7 +536,7 @@
     let list;
     try { list = await DB.listGrabbed(state.uid); }
     catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; return; }
-    if (!list.length) { el.innerHTML = emptyHtml('还没抢到单，去「大厅」看看'); return; }
+    if (!list.length) { el.innerHTML = emptyHtml('还没有接单，去「大厅」看看'); return; }
     renderReqList(list, $('#grabbedList'), 'grabbed');
   }
 
@@ -489,9 +549,13 @@
     return `<span class="cp-tag active">可用</span>`;
   }
 
-  // 优惠券大字面值展示
+  // 优惠券大字面值展示（cash 保留 1 位小数，整数不显示 .0）
+  function fmtCash(n) {
+    const v = Number(n) || 0;
+    return Number.isInteger(v) ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, '');
+  }
   function couponValueBig(c) {
-    if (c.type === 'cash') return `<div class="cp-big val-cash"><small>¥</small>${Number(c.value).toFixed(0)}</div>`;
+    if (c.type === 'cash') return `<div class="cp-big val-cash"><small>¥</small>${fmtCash(c.value)}</div>`;
     if (c.type === 'member_half') return `<div class="cp-big val-half">半价</div>`;
     const zhe = Number(c.value * 10).toFixed(Number.isInteger(c.value * 10) ? 0 : 1);
     return `<div class="cp-big val-percent"><span class="num">${zhe}</span><span class="unit">折</span></div>`;
@@ -625,6 +689,16 @@
         c = (res.rows || []).find(x => x.id === id) || null;
       } catch (e) {}
     }
+    // 选人器：已选专属会员列表（编辑时回填原 owner）
+    let selectedOwners = [];
+    if (id && c && c.owner_id) {
+      try {
+        const d = await DB.getDesignerByAuthId(c.owner_id);
+        selectedOwners = d
+          ? [{ id: d.auth_id, name: d.name, email: d.email, role: d.role }]
+          : [{ id: c.owner_id, name: c.owner_id, email: '', role: '' }];
+      } catch (e) {}
+    }
     const mask = document.createElement('div');
     mask.className = 'cp-editor-mask';
     mask.innerHTML = `<div class="cp-editor">
@@ -649,8 +723,12 @@
       <input id="cpMin" type="number" step="1" value="${c ? c.min_amount : 0}" />
       <label>过期时间（可空=不过期）</label>
       <input id="cpExpire" type="datetime-local" value="${c && c.expire_at ? toLocalInput(c.expire_at) : ''}" />
-      <label>专属会员 auth.id（可空=公开活动码）</label>
-      <input id="cpOwner" placeholder="留空=公开" value="${c && c.owner_id ? c.owner_id : ''}" />
+      <label>专属会员（可空=公开活动码；可多选批量定向发券）</label>
+      <div class="cp-owner-picker">
+        <input id="cpOwnerSearch" class="cp-owner-search" type="text" placeholder="搜索姓名/邮箱…" autocomplete="off" />
+        <div id="cpOwnerResults" class="cp-owner-results"></div>
+        <div id="cpOwnerChips" class="cp-owner-chips"></div>
+      </div>
       <label>活动标识</label>
       <input id="cpCamp" value="${c ? esc(c.campaign || '') : ''}" />
       <label class="chk-row"><input id="cpActive" type="checkbox" ${!c || c.active ? 'checked' : ''}/><span>启用</span></label>
@@ -691,25 +769,97 @@
       if (cpCode) cpCode.addEventListener('input', updateBatchHint);
       updateBatchHint();
     }
+    // ---------- 专属会员选人器 ----------
+    const ownerSearch = $('#cpOwnerSearch');
+    const ownerResults = $('#cpOwnerResults');
+    const ownerChips = $('#cpOwnerChips');
+    const singleSelect = !!id;   // 编辑单张券时只允许选 1 个 owner
+    let ownerTimer = null;
+
+    function renderChips() {
+      if (!ownerChips) return;
+      if (!selectedOwners.length) { ownerChips.innerHTML = ''; return; }
+      ownerChips.innerHTML = selectedOwners.map((o, i) =>
+        `<span class="cp-owner-chip">${esc(o.name || o.id)}${o.email ? ' <i>' + esc(o.email) + '</i>' : ''}`
+        + `<button type="button" class="cp-owner-x" data-i="${i}">×</button></span>`
+      ).join('');
+      ownerChips.querySelectorAll('.cp-owner-x').forEach(b =>
+        b.addEventListener('click', () => {
+          selectedOwners.splice(parseInt(b.dataset.i), 1);
+          renderChips(); searchOwners();
+        }));
+    }
+    function searchOwners() {
+      if (!ownerSearch || !ownerResults) return;
+      const q = (ownerSearch.value || '').replace(/[%_]/g, '').trim();
+      if (!q) { ownerResults.innerHTML = ''; return; }
+      DB.listDesignersForPicker(q).then(list => {
+        const sel = new Set(selectedOwners.map(o => o.id));
+        const hit = (list || []).filter(o => o.auth_id && !sel.has(o.auth_id)).slice(0, 20);
+        if (!hit.length) { ownerResults.innerHTML = '<div class="cp-owner-empty">无匹配用户</div>'; return; }
+        ownerResults.innerHTML = hit.map(o =>
+          `<div class="cp-owner-item" data-id="${esc(o.auth_id)}" data-name="${esc(o.name || '')}"`
+          + ` data-email="${esc(o.email || '')}" data-role="${esc(o.role || '')}">`
+          + `<b>${esc(o.name || '(未命名)')}</b>`
+          + (o.email ? ` <span class="cp-owner-em">${esc(o.email)}</span>` : '')
+          + (o.role ? ` <span class="cp-owner-role">${esc(o.role)}</span>` : '')
+          + `</div>`).join('');
+        ownerResults.querySelectorAll('.cp-owner-item').forEach(it =>
+          it.addEventListener('click', () => {
+            const picked = { id: it.dataset.id, name: it.dataset.name, email: it.dataset.email, role: it.dataset.role };
+            if (singleSelect) selectedOwners = [picked];
+            else if (!selectedOwners.find(x => x.id === picked.id)) selectedOwners.push(picked);
+            renderChips();
+            ownerSearch.value = '';
+            ownerResults.innerHTML = '';
+          }));
+      }).catch(() => { ownerResults.innerHTML = ''; });
+    }
+    if (ownerSearch) {
+      ownerSearch.addEventListener('input', () => { clearTimeout(ownerTimer); ownerTimer = setTimeout(searchOwners, 250); });
+      ownerSearch.addEventListener('focus', searchOwners);
+    }
+    renderChips();
+
     $('#cpSave').addEventListener('click', async () => {
-      const payload = {
+      const base = {
         id: id || '',
         code: $('#cpCode').value.trim().toUpperCase(),
         type: $('#cpType').value,
         value: parseFloat($('#cpValue').value) || 0,
         min_amount: parseFloat($('#cpMin').value) || 0,
         expire_at: $('#cpExpire').value ? new Date($('#cpExpire').value).toISOString() : '',
-        owner_id: $('#cpOwner').value.trim(),
         campaign: $('#cpCamp').value.trim(),
-        active: $('#cpActive').checked,
-        count: id ? 1 : (parseInt($('#cpCount').value) || 1)
+        active: $('#cpActive').checked
       };
+      const owners = selectedOwners.map(o => o.id);
+      const count = id ? 1 : (parseInt($('#cpCount').value) || 1);
       const btn = $('#cpSave'); btn.disabled = true; btn.textContent = '保存中…';
       try {
-        const r = await DB.adminUpsertCoupon(state.uid, payload);
-      if (r.ok) { toast(r.msg || '已保存'); closeEditor(); loadAdminCoupons(); }
-      else { toast('失败：' + (r.msg || '')); btn.disabled = false; updateBatchHint(); }
-    } catch (e) { toast('异常：' + e.message); btn.disabled = false; updateBatchHint(); }
+        let results = [];
+        if (owners.length === 0) {
+          // 公开活动码：全员可见可用
+          results.push(await DB.adminUpsertCoupon(state.uid, { ...base, owner_id: '', count }));
+        } else if (owners.length === 1) {
+          // 单用户：沿用原有 count（同一人可批量多张）
+          results.push(await DB.adminUpsertCoupon(state.uid, { ...base, owner_id: owners[0], count }));
+        } else {
+          // 多用户：每人各发 1 张专属券（count 不叠加）
+          for (const oid of owners) {
+            results.push(await DB.adminUpsertCoupon(state.uid, { ...base, owner_id: oid, count: 1 }));
+          }
+        }
+        const okAll = results.every(r => r && r.ok);
+        if (okAll) {
+          const n = results.length;
+          toast(n > 1 ? `已向 ${owners.length} 位会员发放 ${n} 张专属券` : (results[0] && results[0].msg || '已保存'));
+          closeEditor(); loadAdminCoupons();
+        } else {
+          const msgs = results.filter(r => !r || !r.ok).map(r => (r && r.msg) || '未知错误').join('；');
+          toast('部分失败：' + msgs);
+          btn.disabled = false; updateBatchHint();
+        }
+      } catch (e) { toast('异常：' + e.message); btn.disabled = false; updateBatchHint(); }
     });
   }
 
@@ -758,7 +908,7 @@
     const cyc = r.trigger_type === 'periodic'
       ? (r.cycle === 'daily' ? '每日' : r.cycle === 'weekly' ? '每周' : '每月') : '';
     const tlabel = { percent: '打折', cash: '抵现', member_half: '半价' }[r.type] || r.type;
-    const valText = r.type === 'cash' ? '¥' + r.value
+    const valText = r.type === 'cash' ? '¥' + fmtCash(r.value)
       : r.type === 'percent' ? (Math.round((1 - r.value) * 10 * 10) / 10) + '折'
       : '半价';
     const minText = r.min_amount > 0 ? '满¥' + r.min_amount : '无门槛';
@@ -916,10 +1066,10 @@
     let main = '', subs = '', tail = '';
     if (st === 'open') {
       if (isMine) {
-        tail = `<span class="waiting-tag">等待抢单</span>`;
-        subs = `<button class="btn btn-sm btn-warn" data-act="del" data-id="${r.id}">撤回</button>`;
+        tail = `<span class="waiting-tag">待接单</span>`;
+        subs = `<span class="act-link" data-act="del" data-id="${r.id}">撤回</span>`;
       } else {
-        main = `<button class="btn btn-primary btn-main" data-act="grab" data-id="${r.id}">抢单</button>`;
+        main = `<button class="btn btn-primary btn-main" data-act="grab" data-id="${r.id}">接单</button>`;
       }
     } else if (iAmParty) {
       main = `<button class="btn btn-primary btn-main" data-act="chat" data-id="${r.id}">沟通</button>`;
@@ -945,7 +1095,7 @@
         subs += `<button class="btn btn-sm btn-ghost" data-act="sync" data-id="${r.id}">同步到工作台</button>`;
       }
     } else {
-      tail = `<span class="locked-by">${esc(r.locked_by_name || '设计师')} 已抢单</span>`;
+      tail = `<span class="locked-by">${esc(r.locked_by_name || '设计师')} 已接单</span>`;
     }
     const budgetRaw = Number(r.budget) || 0;
     const finalRaw = Number(r.final_amount) || 0;
@@ -962,19 +1112,24 @@
     const publisherName = visiblePublisherName(r);
     const avatarHtml = `<span class="avatar-xs">${esc(initials(publisherName))}</span>`;
     const who = st === 'open'
-      ? `${esc(publisherName)} 发布 · ${fmtTime(r.created_at)}`
+      ? `${esc(publisherName)} · ${timeAgo(r.created_at)}`
       : `${esc(r.locked_by_name || '设计师')} 接单`;
-    return `<div class="req-card is-${esc(st)}" data-detail-id="${r.id}">
+    const coverUrl = (Array.isArray(r.attachments) && r.attachments.length && r.attachments[0].url) ? r.attachments[0].url : '';
+    const desc = (r.description || '').trim();
+    const cardMain = `<div class="req-card-main">
       <div class="req-head">
         <span class="req-title">${esc(r.title)}</span>
         ${budget}
       </div>
       <div class="req-tags">${typeTag}${attTag}${urgency}${statusBadge(st)}</div>
-      <div class="req-desc">${esc(r.description || '（无描述）')}</div>
+      ${desc ? `<div class="req-desc" title="${esc(desc)}">${esc(desc)}</div>` : ''}
       <div class="req-foot">
-        <span class="pub-by">${avatarHtml}<span class="pub-text">${who}</span></span>
+        <span class="pub-by">${avatarHtml}<span class="pub-text" title="${esc(fmtTime(r.created_at))}">${who}</span></span>
         ${tail}
       </div>
+    </div>`;
+    return `<div class="req-card is-${esc(st)}" data-detail-id="${r.id}">
+      ${coverUrl ? `<div class="req-cover"><img src="${esc(coverUrl)}" alt="" loading="lazy" /></div>` + cardMain : cardMain}
       <div class="req-actions">
         ${subs ? `<div class="req-subs">${subs}</div>` : ''}
         ${main}
@@ -1110,9 +1265,13 @@
       <div id="pCouponInfo" class="coupon-info" style="display:none"></div>
       <label>期望交稿时间（可留空=不限）</label>
       <input id="pDeadline" type="datetime-local" />
-      <label class="chk-row">
+      <label class="privacy-card privacy-toggle">
         <input id="pHidePublisher" type="checkbox" />
-        <span>未抢单前隐藏我的个人信息（仅显示「匿名发布者」，被抢后向设计师公开）</span>
+        <span class="privacy-switch"></span>
+        <span class="privacy-text">
+          <b>未接单前隐藏我的个人信息</b>
+          <small>开启后在大厅仅显示「平台用户」，被设计师接单后再向对方公开</small>
+        </span>
       </label>
       <label>参考图/素材（可选，最多 6 张）</label>
       <input id="pFiles" type="file" accept="image/*" multiple />
@@ -1152,7 +1311,7 @@
   // 把券对象转成可读标签
   function couponLabel(c) {
     let kind = '';
-    if (c.type === 'cash') kind = `减¥${c.value}`;
+    if (c.type === 'cash') kind = `减¥${fmtCash(c.value)}`;
     else if (c.type === 'percent') kind = `打${Number(c.value * 10).toFixed(Number.isInteger(c.value * 10) ? 0 : 1)}折`;
     else if (c.type === 'member_half') kind = '注册会员半价';
     const thr = Number(c.min_amount) > 0 ? `（满¥${c.min_amount}）` : '';
@@ -1560,7 +1719,15 @@
       ? (hasCoupon ? `¥${budgetRaw.toFixed(0)} → <b style="color:#16a34a">¥${finalRaw.toFixed(0)}</b>` : `¥${budgetRaw.toFixed(0)}`)
       : '面议';
     const dlStr = r.deadline ? fmtTime(r.deadline) + (new Date(r.deadline) > new Date() ? `（${countdownHtml(r.deadline).replace(/<[^>]+>/g,'')}）` : '') : '不限';
+    const STEP_MAP = { open: 1, locked: 2, in_progress: 3, done: 4, cancel_request: 3, cancelled: 0 };
+    const step = STEP_MAP[st] || 1;
     const html = `
+      <div class="drawer-timeline">
+        <div class="tl-step ${step >= 1 ? 'done' : ''}"><span class="tl-dot"></span>发布</div>
+        <div class="tl-step ${step >= 2 ? 'done' : ''}"><span class="tl-dot"></span>接单</div>
+        <div class="tl-step ${step >= 3 ? 'done' : ''}"><span class="tl-dot"></span>设计中</div>
+        <div class="tl-step ${step >= 4 ? 'done' : ''}"><span class="tl-dot"></span>完成</div>
+      </div>
       <div class="drawer-meta-row">
         <div class="item"><div class="label">预算</div><div class="value">${budget}</div></div>
         <div class="item"><div class="label">截止时间</div><div class="value">${esc(dlStr)}</div></div>
@@ -1611,7 +1778,7 @@
     const isLockedByMe = r.locked_by === state.uid;
     let acts = '';
     if (st === 'open' && !isMine) {
-      acts = `<button class="btn btn-primary" data-act="grab" data-id="${r.id}">抢单</button>`;
+      acts = `<button class="btn btn-primary" data-act="grab" data-id="${r.id}">立即接单</button>`;
     } else if (isMine || isLockedByMe) {
       acts = `<button class="btn btn-primary" data-act="chat" data-id="${r.id}">沟通</button>`;
       if (st === 'locked' && isLockedByMe) acts += `<button class="btn" data-act="start" data-id="${r.id}">开始设计</button>`;
@@ -1701,16 +1868,16 @@
     const list = state.chats || [];
     const body = $('#inboxBody');
     if (!list.length) {
-      body.innerHTML = `<div class="empty">暂无会话，去「大厅」抢单或「发布」需求试试</div>`; return;
+      body.innerHTML = `<div class="empty">暂无会话，去「大厅」接单或「发布」需求试试</div>`; return;
     }
     body.innerHTML = list.map(c => {
       const iAmPub = c.publisher_id === state.uid;
-      const other = iAmPub ? (c.locked_by_name || '等待抢单') : (c.publisher_name || '匿名');
+      const other = iAmPub ? (c.locked_by_name || '等待接单') : (c.publisher_name || '匿名');
       const stMeta = Cfg.STATUS[c.status] || { label: c.status, color: '#64748b' };
       const isSys = c.last_message_type === 'system';
       const msg = c.last_message
         ? (isSys ? '📌 ' + c.last_message : c.last_message)
-        : (c.status === 'open' ? '（等待抢单中）' : '（暂无消息）');
+        : (c.status === 'open' ? '（等待接单中）' : '（暂无消息）');
       const hasUnread = (c.unread || 0) > 0;
       return `<div class="inbox-item" data-inbox-id="${c.id}">
         <div class="inbox-meta">
