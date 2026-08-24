@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#2563eb" />
+  <title>设计需求发布平台</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="css/styles.css?v7" />
+</head>
+<body>
+  <!-- 启动遮罩 -->
+  <div id="bootSplash" class="boot-splash">
+    <div class="boot-card">
+      <div class="boot-brand">🎨 设计需求发布平台</div>
+      <div class="boot-sub">加载中…</div>
+    </div>
+  </div>
+
+  <!-- 登录 / 注册 -->
+  <div id="authScreen" class="auth-screen" style="display:none">
+    <div class="auth-card">
+      <div class="auth-brand">🎨 设计需求发布平台</div>
+      <div class="auth-sub" id="authSub">注册用户发布需求 · 设计师抢单</div>
+      <div class="seg">
+        <button class="seg-btn active" data-mode="login">登录</button>
+        <button class="seg-btn" data-mode="register">注册</button>
+      </div>
+      <input id="authEmail" type="email" placeholder="邮箱" autocomplete="username" />
+      <input id="authPwd" type="password" placeholder="密码（≥6 位）" autocomplete="current-password" />
+      <button id="authSubmit" class="btn btn-primary">登录</button>
+      <div id="authHint" class="auth-hint"></div>
+    </div>
+  </div>
+
+  <!-- 主应用 -->
+  <div id="app" class="app" style="display:none">
+    <header class="topbar">
+      <div class="topbar-title">需求大厅</div>
+      <div class="topbar-right">
+        <button id="btnInbox" class="icon-btn" title="我的消息">
+          📨<span id="inboxDot" class="red-dot" hidden></span>
+        </button>
+        <div id="userChip" class="user-chip">
+          <span id="userAvatar" class="avatar-sm"></span>
+          <span id="userName"></span>
+        </div>
+        <button id="btnSignOut" class="btn-ghost">退出</button>
+      </div>
+    </header>
+
+    <main id="tabContent" class="tab-content"></main>
+
+    <!-- 底部 Tab -->
+    <nav id="tabs" class="tabs">
+      <button class="tab-btn active" data-tab="board"><span>🏠</span>大厅</button>
+      <button class="tab-btn" data-tab="mine"><span>📤</span>我发布的</button>
+      <button class="tab-btn" data-tab="grabbed"><span>✋</span>我抢的</button>
+      <button class="tab-btn" data-tab="publish"><span>➕</span>发布</button>
+    </nav>
+    <!-- 悬浮发布按钮（除发布页外常驻，强化主 CTA） -->
+    <button id="fabPublish" class="fab" title="发布需求">＋</button>
+  </div>
+
+  <!-- 聊天弹层 -->
+  <div id="chatMask" class="modal-mask" style="display:none">
+    <div class="chat-panel">
+      <div class="chat-head">
+        <div id="chatTitle" class="chat-title">沟通</div>
+        <button id="chatClose" class="btn-ghost">✕</button>
+      </div>
+      <div id="chatBody" class="chat-body"></div>
+      <div id="chatUploads" class="chat-uploads" style="display:none"></div>
+      <div id="chatEmojiPanel" class="emoji-panel" style="display:none"></div>
+      <div class="chat-toolbar">
+        <button id="btnChatEmoji" class="chat-tool" title="表情">😊</button>
+        <button id="btnChatAttach" class="chat-tool" title="发送图片/文件">📎</button>
+        <input id="chatFile" type="file" accept="image/*,.pdf,.psd,.ai,.eps,.zip" multiple style="display:none" />
+      </div>
+      <div class="chat-input">
+        <input id="chatText" type="text" placeholder="输入消息…" />
+        <button id="chatSend" class="btn btn-primary">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <!-- 详情抽屉（点卡片打开） -->
+  <div id="detailMask" class="modal-mask" style="display:none">
+    <div class="drawer">
+      <div class="drawer-head">
+        <div class="drawer-title-row">
+          <span id="detailStatus" class="status-pill"></span>
+          <span id="detailTitle" class="drawer-title"></span>
+        </div>
+        <button id="detailClose" class="btn-ghost">✕</button>
+      </div>
+      <div id="detailBody" class="drawer-body"></div>
+      <div id="detailActions" class="drawer-actions"></div>
+    </div>
+  </div>
+
+  <!-- 会话列表（Inbox） -->
+  <div id="inboxMask" class="modal-mask" style="display:none">
+    <div class="drawer">
+      <div class="drawer-head">
+        <div class="drawer-title">我的消息</div>
+        <button id="inboxClose" class="btn-ghost">✕</button>
+      </div>
+      <div id="inboxBody" class="drawer-body"></div>
+    </div>
+  </div>
+
+  <!-- 抢单平台独立缓存版本：改前端发版时请把 ?vN 同步 +1 -->
+  <script src="vendor/supabase.js?lib1"></script>
+  <script src="js/config.js?v6"></script>
+  <script src="js/db.js?v6"></script>
+  <script src="js/app.js?v6"></script>
+</body>
+</html>

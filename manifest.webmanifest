@@ -1,0 +1,14 @@
+{
+  "name": "设计需求发布平台",
+  "short_name": "设计抢单",
+  "description": "注册用户发布设计需求，设计师抢单并实时沟通",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#2563eb",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
