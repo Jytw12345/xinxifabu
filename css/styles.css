@@ -43,6 +43,28 @@ input { font-family: inherit; }
 .auth-card input:focus { border-color: #2563eb; }
 .auth-hint { color: #dc2626; font-size: 12px; min-height: 16px; margin-top: 6px; text-align: center; }
 
+/* 登录：显示/隐藏密码 + 记住账号密码 */
+.pwd-wrap { position: relative; margin-bottom: 10px; }
+.pwd-wrap input { margin-bottom: 0; padding-right: 44px; }
+.pwd-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; font-size: 17px; padding: 6px; cursor: pointer; line-height: 1;
+}
+.remember-row {
+  display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569;
+  margin: 2px 0 12px; cursor: pointer; user-select: none;
+}
+.remember-row input { width: 16px; height: 16px; margin: 0; accent-color: #2563eb; }
+
+/* PWA 安装引导条 */
+.install-banner {
+  display: flex; align-items: center; gap: 10px; margin: 10px 14px 0;
+  padding: 10px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
+  font-size: 14px; color: #1e40af;
+}
+.install-text { flex: 1; }
+.install-banner .btn { width: auto; flex-shrink: 0; }
+
 /* 按钮 */
 .btn { border: 0; border-radius: 10px; padding: 11px 16px; font-size: 15px; font-weight: 600; }
 .btn-primary { background: #2563eb; color: #fff; width: 100%; }
@@ -115,14 +137,19 @@ input { font-family: inherit; }
 .req-card {
   background: #fff; border-radius: 14px; padding: 14px;
   box-shadow: 0 1px 3px rgba(0,0,0,.06); cursor: pointer;
-  border-left: 4px solid transparent; transition: background .15s;
+  border-left: 4px solid transparent; transition: background .15s, box-shadow .15s, transform .15s;
 }
-.req-card:active { background: #f8fafc; }
+.req-card:hover { background: #f8fafc; box-shadow: 0 4px 12px rgba(0,0,0,.10); transform: translateY(-2px); }
+.req-card:active { background: #eef2f7; transform: translateY(0); }
 .req-card.is-open { border-left-color: #2563eb; }
 .req-card.is-locked { border-left-color: #d97706; }
 .req-card.is-in_progress { border-left-color: #7c3aed; }
 .req-card.is-done { border-left-color: #16a34a; }
 .req-card.is-cancelled { border-left-color: #94a3b8; opacity: .85; }
+/* 触摸设备不显示 hover 浮起，避免误触抖动 */
+@media (hover: none) {
+  .req-card:hover { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); transform: none; }
+}
 .req-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
 .req-title { font-weight: 700; font-size: 16px; line-height: 1.35; flex: 1; min-width: 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -395,4 +422,234 @@ input { font-family: inherit; }
     resize: both; overflow: hidden; min-width: 320px; min-height: 400px;
   }
   .chat-head { cursor: move; }
+}
+
+/* ---------- 图片放大预览 lightbox ---------- */
+.lightbox {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0,0,0,.85); display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+}
+.lightbox-img {
+  max-width: 92vw; max-height: 88vh; border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5); object-fit: contain;
+}
+.lightbox-close {
+  position: absolute; top: 16px; right: 16px; width: 40px; height: 40px;
+  border: none; border-radius: 50%; background: rgba(255,255,255,.15);
+  color: #fff; font-size: 18px; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; transition: background .15s;
+}
+.lightbox-close:hover { background: rgba(255,255,255,.3); }
+
+/* ---------- 聊天系统消息（状态流转） ---------- */
+.msg.sys { display: flex; justify-content: center; margin: 8px 0; }
+.msg-sys {
+  font-size: 12px; color: #64748b; background: #f1f5f9;
+  padding: 4px 12px; border-radius: 999px; max-width: 90%;
+  text-align: center; line-height: 1.4;
+}
+
+/* ---------- 未读消息悬浮提示 ---------- */
+.msg-toast {
+  position: fixed; right: 16px; bottom: 76px; z-index: 1500;
+  width: 280px; max-width: calc(100vw - 32px);
+  background: #fff; border-radius: 12px; padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.18);
+  border-left: 4px solid #2563eb; cursor: pointer;
+  opacity: 0; transform: translateY(12px); transition: opacity .25s, transform .25s;
+}
+.msg-toast.show { opacity: 1; transform: translateY(0); }
+.mt-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.mt-title { font-weight: 700; font-size: 13px; color: #1e293b; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-close { border: none; background: transparent; color: #94a3b8; font-size: 14px;
+  cursor: pointer; padding: 0 2px; line-height: 1; flex-shrink: 0; }
+.mt-close:hover { color: #475569; }
+.mt-body { font-size: 13px; color: #475569; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* 移动端贴底全宽一点 */
+@media (max-width: 480px) {
+  .msg-toast { right: 10px; left: 10px; width: auto; bottom: 70px; }
+}
+
+/* ---------- 优惠券（发布页 + 卡片 + 详情） ---------- */
+.coupon-row { display: flex; gap: 8px; align-items: center; }
+.coupon-sel { flex: 1 1 auto; min-width: 0; }
+.coupon-code { flex: 1 1 auto; min-width: 0; text-transform: uppercase; }
+.coupon-info { margin-top: 6px; font-size: 13px; padding: 6px 10px; border-radius: 8px; }
+.coupon-info.ok { color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; }
+.coupon-info.warn { color: #92400e; background: #fffbeb; border: 1px solid #fde68a; }
+.coupon-info b { font-size: 15px; }
+/* 卡片折后价 */
+.req-amount { font-weight: 700; color: #2563eb; white-space: nowrap; }
+.req-amount s { color: #94a3b8; font-weight: 500; font-size: 12px; margin-right: 2px; }
+.req-amount .amt-final { color: #16a34a; }
+/* 详情优惠条 */
+.drawer-coupon { margin: 10px 0 0; font-size: 13px; color: #475569;
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px; }
+.drawer-coupon b { color: #166534; }
+
+/* ---------- 发布页：半隐藏开关行 ---------- */
+.chk-row { display: flex; align-items: flex-start; gap: 8px; font-weight: 400;
+  font-size: 13px; color: #475569; line-height: 1.4; cursor: pointer; }
+.chk-row input { margin-top: 2px; flex-shrink: 0; }
+
+/* ---------- 我的券包 ---------- */
+/* 我的券包 */
+.coupon-pack { padding: 0 12px 16px; }
+.ckeleton-list, .skeleton-list { display: flex; flex-direction: column; gap: 10px; }
+.empty-box { padding: 24px 0; }
+.cp-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+
+/* 优惠券卡片（横向票券：左金额 / 右信息，参考外卖券样式） */
+.cp-ticket {
+  display: flex; align-items: stretch;
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+  overflow: hidden; border: 1px solid #e2e8f0; position: relative;
+  max-width: 100%;
+}
+.cp-ticket.type-cash { background: linear-gradient(135deg, #fff5f5, #ffeeee); border-color: #fecaca; }
+.cp-ticket.type-percent { background: linear-gradient(135deg, #fff7ed, #fff0e5); border-color: #fed7aa; }
+.cp-ticket.type-member_half { background: linear-gradient(135deg, #faf5ff, #f5eaff); border-color: #d8b4fe; }
+
+.cp-left {
+  flex: 0 0 110px; display: flex; align-items: center; justify-content: center;
+  padding: 14px 8px;
+}
+.cp-big { font-size: 36px; font-weight: 800; line-height: 1; text-align: center; }
+.cp-big small { font-size: 16px; font-weight: 700; vertical-align: super; margin-right: 2px; }
+.cp-big.val-cash { color: #dc2626; }
+.cp-big.val-percent { color: #ea580c; }
+.cp-big.val-percent .unit { font-size: 14px; font-weight: 600; margin-left: 2px; }
+.cp-big.val-half { color: #7c3aed; font-size: 28px; }
+
+.cp-divider {
+  width: 0; flex-shrink: 0; border-left: 1px dashed rgba(0,0,0,.08); margin: 14px 0;
+}
+.cp-ticket.type-cash .cp-divider { border-color: rgba(220,38,38,.15); }
+.cp-ticket.type-percent .cp-divider { border-color: rgba(234,88,12,.15); }
+.cp-ticket.type-member_half .cp-divider { border-color: rgba(124,58,237,.15); }
+
+.cp-right {
+  flex: 1; min-width: 0; padding: 14px 14px 12px;
+  display: flex; flex-direction: column; gap: 3px; justify-content: center;
+}
+.cp-title { font-size: 16px; font-weight: 700; color: #1e293b; line-height: 1.25; }
+.cp-ticket.type-cash .cp-title { color: #dc2626; }
+.cp-ticket.type-percent .cp-title { color: #ea580c; }
+.cp-ticket.type-member_half .cp-title { color: #7c3aed; }
+.cp-sub { font-size: 13px; color: #64748b; }
+.cp-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.cp-code { font-size: 12px; color: #475569; font-weight: 600; word-break: break-all; }
+.cp-exp { font-size: 11px; color: #94a3b8; }
+.cp-exclusive {
+  font-size: 9px; font-weight: 600; color: #fff; background: #8b5cf6;
+  padding: 1px 5px; border-radius: 999px; flex-shrink: 0;
+}
+.cp-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+.cp-tag.active { color: #166534; background: #dcfce7; }
+.cp-tag.used { color: #64748b; background: #f1f5f9; }
+.cp-tag.expired { color: #b91c1c; background: #fee2e2; }
+
+/* 已用/过期/停用状态 */
+.cp-ticket.is-used { opacity: .65; filter: grayscale(.5); }
+.cp-ticket.is-used::after,
+.cp-ticket.is-expired::after,
+.cp-ticket.is-paused::after {
+  content: attr(data-stamp); position: absolute; right: 16px; top: 50%;
+  transform: translateY(-50%) rotate(-12deg);
+  font-size: 26px; font-weight: 800; color: rgba(148,163,184,.35);
+  border: 2px solid rgba(148,163,184,.25); border-radius: 8px; padding: 2px 8px;
+  pointer-events: none; letter-spacing: 2px;
+}
+.cp-ticket.is-used::after { content: '已使用'; }
+.cp-ticket.is-expired::after { content: '已过期'; }
+.cp-ticket.is-paused::after { content: '已停用'; }
+
+/* 优惠券编辑器弹层 */
+.cp-editor-mask { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 2000;
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.cp-editor { background: #fff; border-radius: 14px; padding: 18px; width: 100%; max-width: 380px;
+  max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.cp-editor-hd { font-weight: 700; font-size: 16px; margin-bottom: 12px; color: #1e293b; }
+.cp-editor label { display: block; font-size: 12px; color: #475569; margin: 10px 0 4px; }
+.cp-editor input, .cp-editor select { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1;
+  border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+.cp-editor-ft { display: flex; gap: 10px; margin-top: 16px; }
+.cp-editor-ft .btn { flex: 1; }
+.cp-editor .hint { font-weight: 400; color: #94a3b8; font-size: 11px; }
+.cp-batch-hint {
+  margin-top: 6px; font-size: 12px; color: #166534;
+  background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px;
+  padding: 8px 10px; line-height: 1.45;
+}
+.cp-code-row { display: flex; gap: 8px; align-items: center; }
+.cp-code-row input { flex: 1; }
+.btn-xs { border: 0; background: #eef2ff; color: #4338ca; border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.btn-xs:active { background: #e0e7ff; }
+.cp-code-row .btn-xs { flex: 0 0 auto; white-space: nowrap; }
+
+/* 隐藏悬浮按钮（发布页） */
+.hide-fab { display: none !important; }
+
+/* 管理员发券面板 */
+.admin-coupon { margin-top: 18px; border: 1px dashed #c7d2fe; border-radius: 12px; padding: 12px;
+  background: #f5f7ff; }
+.admin-coupon-hd { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  font-weight: 700; color: #4338ca; margin-bottom: 12px; }
+.admin-coupon-body { min-height: 120px; }
+.cp-admin-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 720px) {
+  .cp-admin-grid { grid-template-columns: repeat(2, minmax(300px, 1fr)); }
+}
+.cp-admin-ft { display: flex; justify-content: flex-start; align-items: center; gap: 8px; margin-top: 6px; }
+.cp-admin-ft .btn { width: auto; }
+.cp-admin-tip { font-size: 12px; color: #94a3b8; }
+.admin-empty { padding: 24px 0; }
+
+/* ---------- 桌面端大屏适配 ---------- */
+@media (min-width: 768px) {
+  /* 底部 tab 居中、限制宽度，避免按钮被拉得过于分散 */
+  .tabs {
+    left: 50%; right: auto; transform: translateX(-50%);
+    max-width: 600px; border-radius: 16px 16px 0 0;
+    border: 1px solid #e2e8f0; border-bottom: 0;
+    box-shadow: 0 -4px 20px rgba(0,0,0,.06);
+    justify-content: center;
+    gap: 12px;
+    padding: 6px 0;
+  }
+  .tab-btn {
+    flex: 0 0 84px;
+    border-radius: 10px;
+    gap: 4px;
+    transition: background .15s;
+  }
+  .tab-btn:hover { background: #f1f5f9; }
+
+  /* 发布表单限制宽度、居中，输入框/按钮不再撑满全屏 */
+  .form-card {
+    max-width: 640px; margin: 0 auto;
+    padding: 24px 28px; border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.05);
+  }
+  .form-card .btn-primary {
+    width: auto; min-width: 160px; max-width: 240px;
+    display: block; margin: 20px auto 0;
+  }
+
+  /* 管理员发券面板按钮不自适应 100% */
+  .admin-coupon-hd .btn { width: auto; flex-shrink: 0; }
+
+  /* 优惠券编辑器弹层在大屏下更窄、按钮更紧凑 */
+  .cp-editor { max-width: 420px; padding: 22px; }
+  .cp-editor-ft .btn { flex: 0 1 120px; }
+
+  /* 电脑端卡券限制最大宽度，避免比例失调 */
+  .cp-ticket { max-width: 520px; }
+  .cp-grid { align-items: center; }
+  .admin-coupon { max-width: 760px; margin-left: auto; margin-right: auto; }
+  .cp-admin-grid { grid-template-columns: repeat(2, minmax(280px, 1fr)); gap: 14px; }
 }

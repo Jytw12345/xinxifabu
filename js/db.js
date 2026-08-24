@@ -39,6 +39,23 @@
     async signIn(email, password) {
       return client.auth.signInWithPassword({ email, password });
     },
+    // 注册时把真实姓名写入 designers 展示名；先尝试直接 upsert，失败则走兜底 RPC
+    async updateDisplayName(uid, name) {
+      if (!uid || !name) return { ok: false, msg: '参数缺失' };
+      try {
+        const { error } = await client
+          .from('designers').upsert({ auth_id: uid, name: name }, { onConflict: 'auth_id' });
+        if (error) throw error;
+        return { ok: true };
+      } catch (e) {
+        // 兜底：若 designers 表 RLS 不允许直接写，用管理员级 RPC
+        const { data, error } = await client.rpc('dr_update_display_name', {
+          p_uid: uid, p_name: name
+        });
+        if (error) throw error;
+        return data;
+      }
+    },
     async signOut() { return client.auth.signOut(); },
     async getSession() { return client.auth.getSession(); },
     // 【v540】跨产品快速登录：接收 workbench 通过 URL hash 传来的 token，写入共享 storageKey
@@ -48,9 +65,9 @@
     onAuthChange(cb) { return client.auth.onAuthStateChange(cb); },
 
     // ---------- 需求 ----------
-    // 需求大厅：支持搜索/类型/状态/排序参数
-    async listBoard({ keyword = '', type = '全部', status = 'open', sort = 'newest' } = {}) {
-      let q = client.from('dr_requirements').select('*').is('deleted_at', null);
+    // 需求大厅：支持搜索/类型/状态/排序/分页；返回 { list, total }
+    async listBoard({ keyword = '', type = '全部', status = 'open', sort = 'newest', limit = 30, offset = 0 } = {}) {
+      let q = client.from('dr_requirements').select('*', { count: 'exact', head: false }).is('deleted_at', null);
       if (status !== 'all') q = q.eq('status', status);
       if (type !== '全部') q = q.eq('task_type', type);
       if (keyword && keyword.trim()) {
@@ -65,9 +82,17 @@
       };
       const s = sorts[sort] || sorts.newest;
       q = q.order(s.col, { ascending: s.asc, nullsFirst: false });
-      const { data, error } = await q;
+      if (limit > 0) q = q.range(offset, offset + limit - 1);
+      const { data, error, count } = await q;
       if (error) throw error;
-      return data || [];
+      return { list: data || [], total: count || 0 };
+    },
+    // 按 id 取单条需求（分页后不再用 listBoard 全量捞）
+    async getRequirement(id) {
+      const { data, error } = await client
+        .from('dr_requirements').select('*').eq('id', id).maybeSingle();
+      if (error) throw error;
+      return data;
     },
     // 我发布的
     async listMine(uid) {
@@ -102,6 +127,13 @@
         .from('dr_requirements').update({ deleted_at: new Date().toISOString() })
         .eq('id', id);
       if (error) throw error;
+    },
+    // 发布参考图/素材：保存 attachments 数组（图片 URL 列表）
+    async updateRequirementAttachments(id, attachments) {
+      const { data, error } = await client
+        .from('dr_requirements').update({ attachments }).eq('id', id).select().single();
+      if (error) throw error;
+      return data;
     },
 
     // 发布者历史统计（详情页用）：总发单数 + 已完成数
@@ -147,7 +179,7 @@
       const reqIds = list.map(r => r.id);
       const { data: msgs } = await client
         .from('dr_messages')
-        .select('requirement_id, sender_id, body, created_at, attachments')
+        .select('requirement_id, sender_id, body, created_at, attachments, msg_type')
         .in('requirement_id', reqIds)
         .neq('sender_id', uid)
         .order('created_at', { ascending: false });
@@ -164,6 +196,7 @@
           ...r,
           last_message: lastByReq[r.id]?.body
             || ((Array.isArray(lastByReq[r.id]?.attachments) && lastByReq[r.id].attachments.length) ? '[图片/文件]' : ''),
+          last_message_type: lastByReq[r.id]?.msg_type || 'text',
           last_message_at: lastByReq[r.id]?.created_at || null,
           unread
         };
@@ -183,12 +216,100 @@
       if (error) throw error;
       return data;
     },
+    async handleCancel(reqId, uid, action) {
+      const { data, error } = await client.rpc('dr_handle_cancel', {
+        p_req: reqId, p_uid: uid, p_action: action
+      });
+      if (error) throw error;
+      return data;
+    },
     // 桥接：把已抢需求落成工作台 orders 一笔订单（幂等）。{
     //   ok:true, order_no, order_id } 或 { ok:true, already:true, order_no } 或 { ok:false, msg }
     async createOrder(reqId, uid) {
       const { data, error } = await client.rpc('dr_create_order', {
         p_req: reqId, p_uid: uid
       });
+      if (error) throw error;
+      return data;
+    },
+
+    // ---------- 优惠券 ----------
+    // 我的券：自己名下未用的 + 公开活动券（owner_id is null 且启用且在期）
+    async listMyCoupons(uid) {
+      const { data, error } = await client
+        .from('dr_coupons')
+        .select('*')
+        .or(`owner_id.eq.${uid},and(owner_id.is.null,active.eq.true)`)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      const now = Date.now();
+      return (data || []).filter(c =>
+        !c.used_at && (c.expire_at == null || new Date(c.expire_at).getTime() > now)
+      );
+    },
+    // 计算折后价：传入预算、券码、当前用户；返回 { ok, final_amount, discount, msg }
+    async calcAmount(budget, code, uid) {
+      const { data, error } = await client.rpc('dr_calc_amount', {
+        p_budget: Number(budget) || 0, p_code: code || '', p_uid: uid
+      });
+      if (error) throw error;
+      return data;
+    },
+    // 发布需求时核销券（标记为已使用）
+    async redeemCoupon(uid, code) {
+      if (!code) return { ok: true, msg: '无券' };
+      const { data, error } = await client.rpc('dr_redeem_coupon', {
+        p_uid: uid, p_code: code
+      });
+      if (error) throw error;
+      return data;
+    },
+
+    // ---------- 管理员 ----------
+    // 当前用户是否为平台管理员（工作台 designers.is_admin）
+    async isAdmin(uid) {
+      try {
+        const { data } = await client.rpc('dr_is_admin', { p_uid: uid });
+        return !!data;
+      } catch (e) { return false; }
+    },
+    // 管理员发券/配置：payload 同 dr_admin_upsert_coupon 入参
+    async adminUpsertCoupon(uid, payload) {
+      const { data, error } = await client.rpc('dr_admin_upsert_coupon', {
+        p_uid: uid, p_payload: payload
+      });
+      if (error) throw error;
+      return data;
+    },
+    async adminDeleteCoupon(uid, id) {
+      const { data, error } = await client.rpc('dr_admin_delete_coupon', {
+        p_uid: uid, p_id: id
+      });
+      if (error) throw error;
+      return data;
+    },
+    async adminListCoupons(uid) {
+      const { data, error } = await client.rpc('dr_admin_list_coupons', { p_uid: uid });
+      if (error) throw error;
+      return data;
+    },
+
+    // ---------- 自动发放规则（注册送 / 定期送，管理员在后台配置） ----------
+    async adminUpsertRule(uid, payload) {
+      const { data, error } = await client.rpc('dr_admin_upsert_rule', {
+        p_uid: uid, p_payload: payload
+      });
+      if (error) throw error;
+      return data;
+    },
+    async adminListRules(uid) {
+      const { data, error } = await client.rpc('dr_admin_list_rules', { p_uid: uid });
+      if (error) throw error;
+      return data;
+    },
+    // 立即发放定期券（管理员手动点，或 pg_cron 定时调用）
+    async grantPeriodicCoupons(uid) {
+      const { data, error } = await client.rpc('dr_grant_periodic_coupons', { p_uid: uid });
       if (error) throw error;
       return data;
     },
@@ -208,6 +329,16 @@
         .from('dr_messages').insert({
           requirement_id: reqId, sender_id: senderId, sender_name: name,
           body, attachments, msg_type: msgType
+        }).select().single();
+      if (error) throw error;
+      return data;
+    },
+    // 状态流转系统消息：sender_id 置空，msg_type='system'，聊天里按系统消息居中灰显
+    async sendSystemMessage(reqId, body) {
+      const { data, error } = await client
+        .from('dr_messages').insert({
+          requirement_id: reqId, sender_id: null, sender_name: '系统',
+          body, attachments: [], msg_type: 'system'
         }).select().single();
       if (error) throw error;
       return data;

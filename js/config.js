@@ -13,11 +13,12 @@ window.Cfg = (function () {
 
   // 需求状态展示
   const STATUS = {
-    open:        { label: '可抢单',   color: '#2563eb' },
-    locked:      { label: '已抢单',   color: '#d97706' },
-    in_progress: { label: '设计中',   color: '#8b5cf6' },
-    done:        { label: '已完成',   color: '#15803d' },
-    cancelled:   { label: '已取消',   color: '#94a3b8' }
+    open:           { label: '可抢单',     color: '#2563eb' },
+    locked:         { label: '已抢单',     color: '#d97706' },
+    in_progress:    { label: '设计中',     color: '#8b5cf6' },
+    cancel_request: { label: '取消待确认', color: '#be123c' },
+    done:           { label: '已完成',     color: '#15803d' },
+    cancelled:      { label: '已取消',     color: '#94a3b8' }
   };
 
   function normUrl(u) { return (u || '').trim().replace(/\/+$/, ''); }

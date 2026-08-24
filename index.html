@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="css/styles.css?v9" />
+  <link rel="stylesheet" href="css/styles.css?v27" />
 </head>
 <body>
   <!-- 启动遮罩 -->
@@ -29,7 +29,15 @@
         <button class="seg-btn" data-mode="register">注册</button>
       </div>
       <input id="authEmail" type="email" placeholder="邮箱" autocomplete="username" />
-      <input id="authPwd" type="password" placeholder="密码（≥6 位）" autocomplete="current-password" />
+      <div class="pwd-wrap">
+        <input id="authPwd" type="password" placeholder="密码（≥6 位）" autocomplete="current-password" />
+        <button id="authPwdToggle" class="pwd-toggle" type="button" title="显示/隐藏密码">👁</button>
+      </div>
+      <input id="authRealName" type="text" placeholder="真实姓名" style="display:none" autocomplete="name" />
+      <label class="remember-row">
+        <input id="authRemember" type="checkbox" checked />
+        <span>记住账号密码</span>
+      </label>
       <button id="authSubmit" class="btn btn-primary">登录</button>
       <div id="authHint" class="auth-hint"></div>
     </div>
@@ -50,6 +58,12 @@
         <button id="btnSignOut" class="btn-ghost">退出</button>
       </div>
     </header>
+    <!-- PWA 安装引导（浏览器触发 beforeinstallprompt 时显示，可主动安装到桌面） -->
+    <div id="installBanner" class="install-banner" style="display:none">
+      <span class="install-text">📱 安装到桌面，打开更快</span>
+      <button id="installBtn" class="btn btn-sm btn-primary">安装</button>
+      <button id="installClose" class="btn-ghost" title="忽略">✕</button>
+    </div>
 
     <main id="tabContent" class="tab-content"></main>
 
@@ -58,6 +72,7 @@
       <button class="tab-btn active" data-tab="board"><span>🏠</span>大厅</button>
       <button class="tab-btn" data-tab="mine"><span>📤</span>我发布的</button>
       <button class="tab-btn" data-tab="grabbed"><span>✋</span>我抢的</button>
+      <button class="tab-btn" data-tab="coupons"><span>🎟</span>券包</button>
       <button class="tab-btn" data-tab="publish"><span>➕</span>发布</button>
     </nav>
     <!-- 悬浮发布按钮（除发布页外常驻，强化主 CTA） -->
@@ -114,10 +129,19 @@
     </div>
   </div>
 
+  <!-- 图片放大预览 -->
+  <div id="lightbox" class="lightbox" style="display:none">
+    <img id="lightboxImg" class="lightbox-img" src="" alt="" />
+    <button id="lightboxClose" class="lightbox-close" title="关闭">✕</button>
+  </div>
+
+  <!-- 未读消息悬浮提示 -->
+  <div id="msgToast" class="msg-toast" style="display:none"></div>
+
   <!-- 抢单平台独立缓存版本：改前端发版时请把 ?vN 同步 +1 -->
   <script src="vendor/supabase.js?lib1"></script>
-  <script src="js/config.js?v9"></script>
-  <script src="js/db.js?v9"></script>
-  <script src="js/app.js?v9"></script>
+  <script src="js/config.js?v27"></script>
+  <script src="js/db.js?v27"></script>
+  <script src="js/app.js?v27"></script>
 </body>
 </html>
