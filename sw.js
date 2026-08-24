@@ -5,7 +5,7 @@
  *  - 页面导航：network-first，回退缓存外壳
  * 发版改前端时把下面 CACHE 的 vN + index.html 里的 ?vN 同步 +1。
  */
-const CACHE = 'dr-pwa-v7';
+const CACHE = 'dr-pwa-v8';
 const PRECACHE = [
   './',
   './index.html',
@@ -14,7 +14,7 @@ const PRECACHE = [
   './vendor/supabase.js?lib1',
   './js/config.js?v6',
   './js/db.js?v6',
-  './js/app.js?v6',
+  './js/app.js?v7',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];

@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const $ = (s) => document.querySelector(s);
-  const APPV = 'v6';
+  const APPV = 'v7';
 
   const state = {
     uid: null,
@@ -127,7 +127,7 @@
           if (error) throw error;
           // onAuthStateChange 会触发 enterApp
         } else {
-          const { data, error } = await DB.signUp({ email, password: pwd });
+          const { data, error } = await DB.signUp(email, pwd);
           if (error) throw error;
           if (data.session) {
             // 关了邮箱验证：直接登录
