@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const $ = (s) => document.querySelector(s);
-  const APPV = 'v27';
+  const APPV = 'v28';
 
   // ---------- PWA 安装引导（尽早监听，浏览器触发 beforeinstallprompt 即提示） ----------
   let deferredPrompt = null;
@@ -184,6 +184,14 @@
     });
     refreshInbox();
     switchTab('board');
+    // 【v28】跨产品深链：URL 带 ?req=<需求id> 时，登录后自动打开该需求会话
+    try {
+      const deepReq = new URLSearchParams(location.search).get('req');
+      if (deepReq) {
+        history.replaceState(null, '', location.pathname);   // 清掉 query，避免刷新重复打开
+        openChat(deepReq);
+      }
+    } catch (e) { /* 深链失败静默 */ }
   }
 
   // ---------- 认证 ----------
