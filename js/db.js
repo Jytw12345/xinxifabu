@@ -122,11 +122,10 @@
       if (error) throw error;
       return data;
     },
-    async softDelete(id) {
-      const { error } = await client
-        .from('dr_requirements').update({ deleted_at: new Date().toISOString() })
-        .eq('id', id);
+    async softDelete(id, uid) {
+      const { data, error } = await client.rpc('dr_withdraw', { p_req: id, p_uid: uid });
       if (error) throw error;
+      if (data && !data.ok) throw new Error(data.msg || '撤回失败');
     },
     // 发布参考图/素材：保存 attachments 数组（图片 URL 列表）
     async updateRequirementAttachments(id, attachments) {

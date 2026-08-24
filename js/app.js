@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const $ = (s) => document.querySelector(s);
-  const APPV = 'v28';
+  const APPV = 'v31';
 
   // ---------- PWA 安装引导（尽早监听，浏览器触发 beforeinstallprompt 即提示） ----------
   let deferredPrompt = null;
@@ -184,12 +184,12 @@
     });
     refreshInbox();
     switchTab('board');
-    // 【v28】跨产品深链：URL 带 ?req=<需求id> 时，登录后自动打开该需求会话
+    // 【v29】跨产品深链：URL 带 ?req=<需求id> 时，登录后自动打开该需求详情抽屉
     try {
       const deepReq = new URLSearchParams(location.search).get('req');
       if (deepReq) {
         history.replaceState(null, '', location.pathname);   // 清掉 query，避免刷新重复打开
-        openChat(deepReq);
+        openDetail(deepReq);
       }
     } catch (e) { /* 深链失败静默 */ }
   }
@@ -1021,8 +1021,15 @@
       openChat(id);
     } else if (act === 'del') {
       if (!confirm('确认撤回该需求？（仅自己未抢走前可撤回）')) return;
-      await DB.softDelete(id);
-      toast('已撤回'); renderMine();
+      try {
+        await DB.softDelete(id, state.uid);
+        toast('已撤回');
+        if (state.tab === 'board') renderBoard();
+        else if (state.tab === 'mine') renderMine();
+        else if (state.tab === 'grabbed') renderGrabbed();
+      } catch (e) {
+        toast('撤回失败：' + (e.message || '请刷新后重试'));
+      }
     } else if (act === 'requestCancel') {
       const res = await DB.handleCancel(id, state.uid, 'request');
       toast(res && res.ok ? '已申请取消，等待设计师确认' : (res && res.msg) || '操作失败');
