@@ -7,7 +7,13 @@
   const URL = Cfg.SUPABASE_URL;
   const KEY = Cfg.SUPABASE_ANON_KEY;
   const client = window.supabase.createClient(URL, KEY, {
-    auth: { persistSession: true, autoRefreshToken: true }
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      // 与工作台 sheji-main 对齐：统一 storageKey 让两个产品共享同一份登录态
+      // （抢单平台通过 URL hash 收到 token 后 setSession 写到这里，下次启动直接复用）
+      storageKey: 'ds-auth-v1'
+    }
   });
 
   // 当前登录用户的展示名：优先取工作台 designers.name（按 auth_id 关联），否则用邮箱前缀
@@ -35,6 +41,10 @@
     },
     async signOut() { return client.auth.signOut(); },
     async getSession() { return client.auth.getSession(); },
+    // 【v540】跨产品快速登录：接收 workbench 通过 URL hash 传来的 token，写入共享 storageKey
+    async setSession(accessToken, refreshToken) {
+      return client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    },
     onAuthChange(cb) { return client.auth.onAuthStateChange(cb); },
 
     // ---------- 需求 ----------

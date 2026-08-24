@@ -76,6 +76,9 @@
 
   // ---------- 启动 ----------
   async function boot() {
+    // 【v540】跨产品快速登录：workbench 跳转时会把 access_token/refresh_token 拼到 URL hash
+    // 启动时优先检测，命中则 setSession() 让 Supabase 接管，再立即清掉 hash 防泄露
+    await maybeAdoptSessionFromHash();
     const { data } = await DB.getSession();
     if (data && data.session) {
       await enterApp(data.session.user);
@@ -83,6 +86,28 @@
       hideSplash();
       showAuth();
     }
+  }
+
+  // 从 URL hash 接收 workbench 传来的 session token。失败静默回退到登录页，不抛错打断启动。
+  async function maybeAdoptSessionFromHash() {
+    const h = location.hash || '';
+    if (!/access_token=/.test(h)) return;
+    const params = new URLSearchParams(h.slice(1));
+    const at = params.get('access_token');
+    const rt = params.get('refresh_token');
+    if (!at) { clearHash(); return; }
+    try {
+      const { error } = await DB.setSession(at, rt);
+      if (error) console.warn('跨产品快速登录 setSession 失败：', error);
+    } catch (e) {
+      console.warn('跨产品快速登录异常，回退到登录页：', e);
+    }
+    clearHash();
+  }
+  function clearHash() {
+    // 用 replaceState 不留浏览器历史，避免 hash（含 token）残留在后退/前进栈
+    try { history.replaceState(null, '', location.pathname + location.search); }
+    catch (e) { location.hash = ''; }
   }
 
   async function enterApp(user) {
