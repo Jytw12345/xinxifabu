@@ -4,7 +4,7 @@
  * ============================================================ */
 (function () {
   const $ = (s) => document.querySelector(s);
-  const APPV = 'v42';
+  const APPV = 'v44';
 
   // ---------- PWA 安装引导（尽早监听，浏览器触发 beforeinstallprompt 即提示） ----------
   let deferredPrompt = null;
@@ -171,8 +171,13 @@
 
   async function enterApp(user) {
     state.uid = user.id;
-    state.name = await DB.myDisplayName();
-    state.isAdmin = await DB.isAdmin(user.id).catch(() => false);
+    // 【v44】展示名与管理员判定并行请求，减少一次东京往返串行等待
+    const [name, isAdmin] = await Promise.all([
+      DB.myDisplayName(),
+      DB.isAdmin(user.id).catch(() => false)
+    ]);
+    state.name = name;
+    state.isAdmin = isAdmin;
     $('#userName').textContent = state.name + (state.isAdmin ? ' 👑' : '');
     $('#userAvatar').textContent = initials(state.name);
     hideSplash();
@@ -381,30 +386,26 @@
     // 大厅顶部静态标语 + 个人概览 + 精选推荐
     if (state._heroTimer) { clearInterval(state._heroTimer); state._heroTimer = null; }
     el.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
-    // 个人概览
-    try {
-      const ms = await DB.getUserStats(state.uid);
+    // 个人概览（先显缓存，后台刷新）
+    DB.getUserStats(state.uid, (ms) => {
       const set = (id, v) => { const e = $(id); if (e) e.textContent = v; };
       set('#mePublished', ms.published); set('#meGrabbed', ms.grabbed);
       set('#meDone', ms.doneGrabbed); set('#meCoupons', ms.coupons);
-    } catch (e) {}
-    // 精选推荐：预算最高的在抢需求，以横向小条展示
-    try {
-      const fres = await DB.listBoard({ status: 'open', sort: 'budget_high', limit: 5, offset: 0 });
-      const fi = $('#featuredItems');
-      if (fi) {
-        if (fres.list && fres.list.length) {
-          fi.innerHTML = fres.list.map(r =>
-            `<button class="featured-item" data-detail-id="${r.id}">` +
-              `<span class="fi-title">${esc(r.title || '未命名')}</span>` +
-              `<span class="fi-amt"><small>预算</small> ¥${Number(r.budget || 0).toLocaleString('zh-CN')}</span>` +
-            `</button>`
-          ).join('');
-          fi.querySelectorAll('[data-detail-id]').forEach(b =>
-            b.addEventListener('click', () => openDetail(b.dataset.detailId)));
-        } else { fi.innerHTML = '<span class="featured-empty">暂无高预算需求</span>'; }
-      }
-    } catch (e) { const fi = $('#featuredItems'); if (fi) fi.innerHTML = '<span class="featured-empty">精选加载失败</span>'; }
+    }).catch(() => {});
+    // 精选推荐：预算最高的在抢需求，以横向小条展示（先显缓存，后台刷新）
+    DB.listBoard({ status: 'open', sort: 'budget_high', limit: 5, offset: 0 }, (fres) => {
+      const fi = $('#featuredItems'); if (!fi) return;
+      if (fres.list && fres.list.length) {
+        fi.innerHTML = fres.list.map(r =>
+          `<button class="featured-item" data-detail-id="${r.id}">` +
+            `<span class="fi-title">${esc(r.title || '未命名')}</span>` +
+            `<span class="fi-amt"><small>预算</small> ¥${Number(r.budget || 0).toLocaleString('zh-CN')}</span>` +
+          `</button>`
+        ).join('');
+        fi.querySelectorAll('[data-detail-id]').forEach(b =>
+          b.addEventListener('click', () => openDetail(b.dataset.detailId)));
+      } else { fi.innerHTML = '<span class="featured-empty">暂无高预算需求</span>'; }
+    }).catch(() => {});
 
     let kwTimer = null;
     $('#boardSearch').addEventListener('input', (e) => {
@@ -436,10 +437,13 @@
     await refreshBoardStats();
     await loadBoardList();
   }
-  // 大厅顶部统计（失败不阻塞列表）
+  // 大厅顶部统计（失败不阻塞列表；先显缓存后台刷新）
   async function refreshBoardStats() {
     try {
-      const s = await DB.getBoardStats(state.uid);
+      const s = await DB.getBoardStats(state.uid, (st) => {
+        const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+        set('#statOpen', st.open); set('#statMine', st.mine); set('#statProgress', st.progress);
+      });
       const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
       set('#statOpen', s.open); set('#statMine', s.mine); set('#statProgress', s.progress);
     } catch (e) { /* 忽略 */ }
@@ -454,10 +458,14 @@
     refreshBoardStats();
     let res;
     try {
+      // 【v44】onStale：缓存命中时先渲染旧列表卡片，后台刷新后再覆盖（token 防重入）
       res = await DB.listBoard({
         keyword: state.boardKeyword, type: state.boardFilter,
         status: state.boardStatus, sort: state.boardSort,
         limit: state.boardLimit, offset: 0
+      }, (stale) => {
+        if (token !== _boardReqToken) return;
+        renderReqList(stale.list, box, 'board', '没有找到匹配的需求');
       });
     } catch (e) {
       if (token !== _boardReqToken) return;
@@ -475,10 +483,13 @@
     box.innerHTML = skeletonHtml(3);
     let res;
     try {
+      // 【v44】onStale：缓存命中先渲染旧列表，后台刷新覆盖
       res = await DB.listBoard({
         keyword: state.boardKeyword, type: state.boardFilter,
         status: state.boardStatus, sort: state.boardSort,
         limit: state.boardLimit, offset: 0
+      }, (stale) => {
+        renderReqList(stale.list, box, 'board', '没有找到匹配的需求');
       });
     } catch (e) {
       box.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; return;
@@ -525,7 +536,7 @@
     let list;
     try { list = await DB.listMine(state.uid); }
     catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; return; }
-    if (!list.length) { el.innerHTML = emptyHtml('还没有发布需求，去「发布」试试'); return; }
+    if (!list.length) { el.innerHTML = emptyHtml('还没有发布需求，去「发布」试试', { tab: 'publish', label: '＋ 发布需求' }); bindEmptyCta(); return; }
     renderReqList(list, $('#mineList'), 'mine');
   }
 
@@ -536,7 +547,7 @@
     let list;
     try { list = await DB.listGrabbed(state.uid); }
     catch (e) { el.innerHTML = `<div class="empty">加载失败：${esc(e.message)}</div>`; return; }
-    if (!list.length) { el.innerHTML = emptyHtml('还没有接单，去「大厅」看看'); return; }
+    if (!list.length) { el.innerHTML = emptyHtml('还没有接单，去「大厅」看看', { tab: 'board', label: '去大厅看看' }); bindEmptyCta(); return; }
     renderReqList(list, $('#grabbedList'), 'grabbed');
   }
 
@@ -1021,8 +1032,16 @@
 
   // ---------- 需求卡片统一渲染 ----------
   // 空状态（带图标与提示）
-  function emptyHtml(msg) {
-    return `<div class="empty"><div class="empty-emoji">🗂</div><div>${esc(msg)}</div><div class="empty-sub">换个条件试试，或去「发布」一条新需求</div></div>`;
+  function emptyHtml(msg, action) {
+    const cta = action
+      ? `<button class="btn btn-primary empty-cta" data-tab="${esc(action.tab)}">${esc(action.label)}</button>`
+      : '';
+    return `<div class="empty"><div class="empty-emoji">🗂</div><div>${esc(msg)}</div><div class="empty-sub">${action ? '点击下方按钮开始' : '换个条件试试，或去「发布」一条新需求'}</div>${cta}</div>`;
+  }
+  // 空状态 CTA：点击跳到指定 tab（发布/大厅等）
+  function bindEmptyCta() {
+    document.querySelectorAll('.empty-cta[data-tab]').forEach(b =>
+      b.addEventListener('click', () => switchTab(b.dataset.tab)));
   }
   // 骨架屏（加载中占位，减少等待焦虑）
   function skeletonHtml(n = 3) {
@@ -1128,8 +1147,11 @@
         ${tail}
       </div>
     </div>`;
+    const coverBlock = coverUrl
+      ? `<div class="req-cover"><img src="${esc(coverUrl)}" alt="" loading="lazy" /></div>`
+      : `<div class="req-cover cover-empty"><span class="cover-emoji">${esc((r.task_type || '🎨').slice(0, 1))}</span></div>`;
     return `<div class="req-card is-${esc(st)}" data-detail-id="${r.id}">
-      ${coverUrl ? `<div class="req-cover"><img src="${esc(coverUrl)}" alt="" loading="lazy" /></div>` + cardMain : cardMain}
+      ${coverBlock}${cardMain}
       <div class="req-actions">
         ${subs ? `<div class="req-subs">${subs}</div>` : ''}
         ${main}
@@ -1247,48 +1269,57 @@
     const opts = Cfg.TASK_TYPES.map(t => `<option>${t}</option>`).join('');
     state.publishFiles = [];
     el.innerHTML = `<div class="form-card">
-      <label>需求标题</label>
-      <input id="pTitle" placeholder="如：A4 双面画册设计" maxlength="40" />
-      <div class="form-row">
-        <div>
-          <label>任务类型</label>
-          <select id="pType">${opts}</select>
-        </div>
-        <div>
-          <label>预算（元，可留空=面议）</label>
-          <input id="pBudget" type="number" min="0" placeholder="0" />
-        </div>
-      </div>
-      <label>需求描述</label>
-      <textarea id="pDesc" placeholder="尺寸、风格、数量、交付格式等…"></textarea>
-      <label>优惠券（可选）</label>
-      <div class="coupon-row">
-        <select id="pCoupon" class="coupon-sel">
-          <option value="">不使用优惠券</option>
-        </select>
-        <input id="pCouponCode" class="coupon-code" type="text" placeholder="或填活动码，如 HALF50" />
-      </div>
-      <div id="pCouponInfo" class="coupon-info" style="display:none"></div>
-      <div class="form-row">
-        <div>
-          <label>期望交稿时间（可留空=不限）</label>
-          <input id="pDeadline" type="datetime-local" />
-        </div>
-        <div>
-          <label>隐私设置</label>
-          <label class="privacy-card privacy-toggle" style="margin:0">
-            <input id="pHidePublisher" type="checkbox" />
-            <span class="privacy-switch"></span>
-            <span class="privacy-text">
-              <b>未接单前隐藏个人信息</b>
-              <small>接单后向设计师公开</small>
-            </span>
-          </label>
+      <div class="form-section">
+        <div class="form-section-hd">基本信息</div>
+        <label>需求标题</label>
+        <input id="pTitle" placeholder="如：A4 双面画册设计" maxlength="40" />
+        <div class="form-row">
+          <div>
+            <label>任务类型</label>
+            <select id="pType">${opts}</select>
+          </div>
+          <div>
+            <label>预算（元，可留空=面议）</label>
+            <input id="pBudget" type="number" min="0" placeholder="0" />
+          </div>
         </div>
       </div>
-      <label>参考图/素材（可选，最多 6 张）</label>
-      <input id="pFiles" type="file" accept="image/*" multiple />
-      <div id="pUploads" class="chat-uploads" style="display:none"></div>
+      <div class="form-section">
+        <div class="form-section-hd">需求详情</div>
+        <label>需求描述</label>
+        <textarea id="pDesc" placeholder="尺寸、风格、数量、交付格式等…"></textarea>
+        <label>参考图/素材（可选，最多 6 张）</label>
+        <input id="pFiles" type="file" accept="image/*" multiple />
+        <div id="pUploads" class="chat-uploads" style="display:none"></div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-hd">优惠与时效</div>
+        <label>优惠券（可选）</label>
+        <div class="coupon-row">
+          <select id="pCoupon" class="coupon-sel">
+            <option value="">不使用优惠券</option>
+          </select>
+          <input id="pCouponCode" class="coupon-code" type="text" placeholder="或填活动码，如 HALF50" />
+        </div>
+        <div id="pCouponInfo" class="coupon-info" style="display:none"></div>
+        <div class="form-row">
+          <div>
+            <label>期望交稿时间（可留空=不限）</label>
+            <input id="pDeadline" type="datetime-local" />
+          </div>
+          <div>
+            <label>隐私设置</label>
+            <label class="privacy-card privacy-toggle" style="margin:0">
+              <input id="pHidePublisher" type="checkbox" />
+              <span class="privacy-switch"></span>
+              <span class="privacy-text">
+                <b>未接单前隐藏个人信息</b>
+                <small>接单后向设计师公开</small>
+              </span>
+            </label>
+          </div>
+        </div>
+      </div>
       <button id="pSubmit" class="btn btn-primary" style="margin-top:16px">发布需求</button>
     </div>`;
     $('#pFiles').addEventListener('change', (e) => {
@@ -1820,7 +1851,14 @@
   // ---------- Inbox 会话列表 ----------
   async function refreshInbox() {
     try {
-      const chats = await DB.listMyChats(state.uid);
+      const chats = await DB.listMyChats(state.uid, (stale) => {
+        // 先显缓存：立即更新未读红点，后台取到最新后再覆盖
+        state.chats = stale;
+        state.unreadTotal = 0;
+        stale.forEach(c => { state.unreadTotal += (c.unread || 0); });
+        const dot = $('#inboxDot');
+        if (dot) dot.hidden = state.unreadTotal === 0;
+      });
       state.chats = chats;
       // 客户端再算一次未读（避免 listMyChats 内部逻辑遗漏）
       state.unreadTotal = 0;
@@ -1953,13 +1991,7 @@
     bindAuth();
     bindTabs();
     bindChat();
-    // 注册 Service Worker（独立缓存空间 dr-pwa，与工作台互不干扰）
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
-          .catch(() => {}); // 注册失败不影响功能，仅少离线能力
-      });
-    }
+    // 【v44】Service Worker 注册已前移到 index.html head 内联脚本（首屏资源下载同时预缓存），此处不再重复注册
     DB.onAuthChange((event, session) => {
       if (event === 'SIGNED_IN' && session) enterApp(session.user);
       else if (event === 'SIGNED_OUT') { location.reload(); }

@@ -17,6 +17,31 @@
   });
 
   // 当前登录用户的展示名：优先取工作台 designers.name（按 auth_id 关联），否则用邮箱前缀
+  // ---------- 轻量本地缓存（Stale-While-Revalidate） ----------
+  // 【v44】Supabase API 走第三方域名、SW 不缓存，冷启动每次直连东京。
+  // 这里在应用层用 localStorage 缓存列表/统计结果：先返回缓存秒显，后台刷新写回。
+  const CACHE_TTL = 60 * 1000; // 缓存有效期 60s（抢单场景变化快，但首屏秒显优先）
+  async function cacheGet(key) {
+    try {
+      const raw = localStorage.getItem('dr_cache_' + key);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || Date.now() - (obj.ts || 0) > CACHE_TTL) return null;
+      return obj.data;
+    } catch (e) { return null; }
+  }
+  async function cacheSet(key, data) {
+    try { localStorage.setItem('dr_cache_' + key, JSON.stringify({ ts: Date.now(), data })); } catch (e) {}
+  }
+  // 统一封装：先尝试返回缓存（命中则经 onStale 立即渲染），再后台取最新写回并返回
+  async function cached(key, fetcher, onStale) {
+    const hit = await cacheGet(key);
+    if (hit != null) { try { onStale && onStale(hit); } catch (e) {} }
+    const fresh = await fetcher();
+    cacheSet(key, fresh).catch(() => {});
+    return fresh;
+  }
+
   async function myDisplayName() {
     const uid = (await client.auth.getUser()).data.user?.id;
     if (!uid) return '';
@@ -66,26 +91,30 @@
 
     // ---------- 需求 ----------
     // 需求大厅：支持搜索/类型/状态/排序/分页；返回 { list, total }
-    async listBoard({ keyword = '', type = '全部', status = 'open', sort = 'newest', limit = 30, offset = 0 } = {}) {
-      let q = client.from('dr_requirements').select('*', { count: 'exact', head: false }).is('deleted_at', null);
-      if (status !== 'all') q = q.eq('status', status);
-      if (type !== '全部') q = q.eq('task_type', type);
-      if (keyword && keyword.trim()) {
-        const k = keyword.trim();
-        q = q.or(`title.ilike.%${k}%,description.ilike.%${k}%`);
-      }
-      const sorts = {
-        newest:     { col: 'created_at', asc: false },
-        deadline:   { col: 'deadline',   asc: true  },
-        budget_high:{ col: 'budget',     asc: false },
-        budget_low: { col: 'budget',     asc: true  }
-      };
-      const s = sorts[sort] || sorts.newest;
-      q = q.order(s.col, { ascending: s.asc, nullsFirst: false });
-      if (limit > 0) q = q.range(offset, offset + limit - 1);
-      const { data, error, count } = await q;
-      if (error) throw error;
-      return { list: data || [], total: count || 0 };
+    async listBoard({ keyword = '', type = '全部', status = 'open', sort = 'newest', limit = 30, offset = 0 } = {}, onStale) {
+      // 【v44】缓存键含全部筛选条件；先显缓存（onStale）后台刷新，首屏不再等东京往返
+      const key = `board:${status}:${type}:${encodeURIComponent(keyword)}:${sort}:${limit}:${offset}`;
+      return cached(key, async () => {
+        let q = client.from('dr_requirements').select('*', { count: 'exact', head: false }).is('deleted_at', null);
+        if (status !== 'all') q = q.eq('status', status);
+        if (type !== '全部') q = q.eq('task_type', type);
+        if (keyword && keyword.trim()) {
+          const k = keyword.trim();
+          q = q.or(`title.ilike.%${k}%,description.ilike.%${k}%`);
+        }
+        const sorts = {
+          newest:     { col: 'created_at', asc: false },
+          deadline:   { col: 'deadline',   asc: true  },
+          budget_high:{ col: 'budget',     asc: false },
+          budget_low: { col: 'budget',     asc: true  }
+        };
+        const s = sorts[sort] || sorts.newest;
+        q = q.order(s.col, { ascending: s.asc, nullsFirst: false });
+        if (limit > 0) q = q.range(offset, offset + limit - 1);
+        const { data, error, count } = await q;
+        if (error) throw error;
+        return { list: data || [], total: count || 0 };
+      }, onStale);
     },
     // 按 id 取单条需求（分页后不再用 listBoard 全量捞）
     async getRequirement(id) {
@@ -146,20 +175,25 @@
       return { total: all.count || 0, done: done.count || 0 };
     },
     // 大厅顶部统计：可抢单 / 我发布的（未取消）/ 我参与的进行中
-    async getBoardStats(uid) {
-      const [open, mine, progress] = await Promise.all([
-        client.from('dr_requirements').select('*', { count: 'exact', head: true })
-          .eq('status', 'open').is('deleted_at', null),
-        client.from('dr_requirements').select('*', { count: 'exact', head: true })
-          .eq('publisher_id', uid).not('status', 'eq', 'cancelled').is('deleted_at', null),
-        client.from('dr_requirements').select('*', { count: 'exact', head: true })
-          .eq('status', 'in_progress').is('deleted_at', null)
-          .or(`publisher_id.eq.${uid},locked_by.eq.${uid}`)
-      ]);
-      return { open: open.count || 0, mine: mine.count || 0, progress: progress.count || 0 };
+    async getBoardStats(uid, onStale) {
+      // 【v44】个人概览统计缓存：先显缓存后台刷新
+      return cached('stats:' + uid, async () => {
+        const [open, mine, progress] = await Promise.all([
+          client.from('dr_requirements').select('*', { count: 'exact', head: true })
+            .eq('status', 'open').is('deleted_at', null),
+          client.from('dr_requirements').select('*', { count: 'exact', head: true })
+            .eq('publisher_id', uid).not('status', 'eq', 'cancelled').is('deleted_at', null),
+          client.from('dr_requirements').select('*', { count: 'exact', head: true })
+            .eq('status', 'in_progress').is('deleted_at', null)
+            .or(`publisher_id.eq.${uid},locked_by.eq.${uid}`)
+        ]);
+        return { open: open.count || 0, mine: mine.count || 0, progress: progress.count || 0 };
+      }, onStale);
     },
     // 个人概览：我发布 / 我抢到 / 已完成 / 可用券（失败返回 0）
-    async getUserStats(uid) {
+    async getUserStats(uid, onStale) {
+      // 【v44】个人概览缓存：先显缓存后台刷新
+      return cached('ustats:' + uid, async () => {
       try {
         const [published, grabbed, doneGrabbed] = await Promise.all([
           client.from('dr_requirements').select('*', { count: 'exact', head: true })
@@ -183,6 +217,7 @@
           coupons: couponCount
         };
       } catch (e) { return { published: 0, grabbed: 0, doneGrabbed: 0, coupons: 0 }; }
+      }, onStale);
     },
     // 全局消息订阅（Inbox 未读刷新用）：服务端 RLS 限制只能看到我参与的会话消息
     subscribeAllMessages(cb) {
@@ -193,39 +228,42 @@
         .subscribe();
       return ch;
     },
-    async listMyChats(uid) {
-      const { data: reqs } = await client
-        .from('dr_requirements')
-        .select('id, title, publisher_id, locked_by, status, publisher_name, locked_by_name, updated_at, linked_order_id')
-        .is('deleted_at', null)
-        .or(`publisher_id.eq.${uid},locked_by.eq.${uid}`);
-      const list = reqs || [];
-      if (!list.length) return [];
-      const reqIds = list.map(r => r.id);
-      const { data: msgs } = await client
-        .from('dr_messages')
-        .select('requirement_id, sender_id, body, created_at, attachments, msg_type')
-        .in('requirement_id', reqIds)
-        .neq('sender_id', uid)
-        .order('created_at', { ascending: false });
-      const lastByReq = {};
-      (msgs || []).forEach(m => { if (!lastByReq[m.requirement_id]) lastByReq[m.requirement_id] = m; });
-      return list.map(r => {
-        // 未读：基于 localStorage 的 lastRead_<reqId>；从未读过则全部算未读
-        const reqMsgs = msgs?.filter(m => m.requirement_id === r.id) || [];
-        const lastRead = localStorage.getItem('lastReadAt_' + r.id);
-        const unread = lastRead
-          ? reqMsgs.filter(m => m.created_at > lastRead).length
-          : reqMsgs.length;
-        return {
-          ...r,
-          last_message: lastByReq[r.id]?.body
-            || ((Array.isArray(lastByReq[r.id]?.attachments) && lastByReq[r.id].attachments.length) ? '[图片/文件]' : ''),
-          last_message_type: lastByReq[r.id]?.msg_type || 'text',
-          last_message_at: lastByReq[r.id]?.created_at || null,
-          unread
-        };
-      });
+    async listMyChats(uid, onStale) {
+      // 【v44】会话列表缓存：先显缓存后台刷新（未读基于 localStorage，缓存结构可直接复用）
+      return cached('chats:' + uid, async () => {
+        const { data: reqs } = await client
+          .from('dr_requirements')
+          .select('id, title, publisher_id, locked_by, status, publisher_name, locked_by_name, updated_at, linked_order_id')
+          .is('deleted_at', null)
+          .or(`publisher_id.eq.${uid},locked_by.eq.${uid}`);
+        const list = reqs || [];
+        if (!list.length) return [];
+        const reqIds = list.map(r => r.id);
+        const { data: msgs } = await client
+          .from('dr_messages')
+          .select('requirement_id, sender_id, body, created_at, attachments, msg_type')
+          .in('requirement_id', reqIds)
+          .neq('sender_id', uid)
+          .order('created_at', { ascending: false });
+        const lastByReq = {};
+        (msgs || []).forEach(m => { if (!lastByReq[m.requirement_id]) lastByReq[m.requirement_id] = m; });
+        return list.map(r => {
+          // 未读：基于 localStorage 的 lastRead_<reqId>；从未读过则全部算未读
+          const reqMsgs = msgs?.filter(m => m.requirement_id === r.id) || [];
+          const lastRead = localStorage.getItem('lastReadAt_' + r.id);
+          const unread = lastRead
+            ? reqMsgs.filter(m => m.created_at > lastRead).length
+            : reqMsgs.length;
+          return {
+            ...r,
+            last_message: lastByReq[r.id]?.body
+              || ((Array.isArray(lastByReq[r.id]?.attachments) && lastByReq[r.id].attachments.length) ? '[图片/文件]' : ''),
+            last_message_type: lastByReq[r.id]?.msg_type || 'text',
+            last_message_at: lastByReq[r.id]?.created_at || null,
+            unread
+          };
+        });
+      }, onStale);
     },
     async grab(reqId, designerId, name) {
       const { data, error } = await client.rpc('dr_grab', {

@@ -5,16 +5,16 @@
  *  - 页面导航：network-first，回退缓存外壳
  * 发版改前端时把下面 CACHE 的 vN + index.html 里的 ?vN 同步 +1。
  */
-const CACHE = 'dr-pwa-v42';
+const CACHE = 'dr-pwa-v44';
 const PRECACHE = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './css/styles.css?v42',
+  './css/styles.css?v44',
   './vendor/supabase.js?lib1',
-  './js/config.js?v42',
-  './js/db.js?v42',
-  './js/app.js?v42',
+  './js/config.js?v44',
+  './js/db.js?v44',
+  './js/app.js?v44',
   './icons/icon-192.png',
   './icons/icon-512.png'
 ];

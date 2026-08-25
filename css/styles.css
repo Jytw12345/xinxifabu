@@ -802,3 +802,36 @@ input { font-family: inherit; }
   .req-actions .btn { padding: 6px 8px; font-size: 12px; min-width: 56px; }
   .req-cover { flex-basis: 68px; width: 68px; height: 68px; }
 }
+
+/* ===================== 专业升级 v43 ===================== */
+/* 底部导航：emoji → 内联 SVG 图标（用 currentColor 跟随活动态） */
+.tab-ico { width: 22px; height: 22px; fill: currentColor; display: block; }
+
+/* Hero Banner 品牌化：蓝紫渐变 + 白底主按钮，首屏专业感 */
+.hero-banner {
+  background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
+  box-shadow: 0 6px 20px rgba(37,99,235,.25);
+  color: #fff;
+}
+.hero-banner::before { display: none; }
+.hero-banner-kicker { color: rgba(255,255,255,.85); }
+.hero-banner-text { color: #fff; font-size: 17px; }
+.hero-banner .btn-primary { background: #fff; color: #2563eb; }
+.hero-banner .btn-primary:active { background: #eef2ff; }
+
+/* 空状态 CTA 按钮：零数据页也能引导转化 */
+.empty-cta { margin-top: 16px; width: auto; padding: 10px 22px; display: inline-block; }
+
+/* 发布表单：分组卡片化 + 区块标题，降低填写焦虑 */
+.form-section { margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid #f1f5f9; }
+.form-section:last-of-type { margin-bottom: 8px; padding-bottom: 0; border-bottom: 0; }
+.form-section-hd { font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+.form-section-hd::before { content: ''; width: 3px; height: 14px; border-radius: 2px; background: #2563eb; display: inline-block; }
+
+/* 需求卡片：封面兜底（无图显示渐变占位） + 价格 pill 突出 */
+.req-cover.cover-empty {
+  background: linear-gradient(135deg, #dbeafe 0%, #e0e7ff 100%);
+  display: flex; align-items: center; justify-content: center;
+}
+.cover-emoji { font-size: 30px; opacity: .7; }
+.req-amount:not(.free) { background: #fef2f2; padding: 1px 9px; border-radius: 999px; line-height: 1.7; }
