@@ -276,8 +276,8 @@
           if (error) throw error;
           saveAuthRemember(email, pwd);
           if (data.session) {
-            // 关了邮箱验证：直接登录；把真实姓名写入 designers 展示名
-            try { await DB.updateDisplayName(data.user.id, realName); } catch (e) { console.warn('保存真实姓名失败', e); }
+            // 关了邮箱验证：直接登录；把真实姓名写入 dr_members 展示名
+            try { await DB.updateDisplayName(data.user.id, realName, email); } catch (e) { console.warn('保存真实姓名失败', e); }
           } else {
             $('#authHint').textContent = '注册成功，请查收验证邮件后登录';
             authMode = 'login';
@@ -704,9 +704,9 @@
     let selectedOwners = [];
     if (id && c && c.owner_id) {
       try {
-        const d = await DB.getDesignerByAuthId(c.owner_id);
+        const d = await DB.getMemberByAuthId(c.owner_id);
         selectedOwners = d
-          ? [{ id: d.auth_id, name: d.name, email: d.email, role: d.role }]
+          ? [{ id: d.auth_id, name: d.name, email: d.email, role: '' }]
           : [{ id: c.owner_id, name: c.owner_id, email: '', role: '' }];
       } catch (e) {}
     }

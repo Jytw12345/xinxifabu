@@ -16,7 +16,7 @@
     }
   });
 
-  // 当前登录用户的展示名：优先取工作台 designers.name（按 auth_id 关联），否则用邮箱前缀
+  // 当前登录用户的展示名：优先取 dr_members.name（按 auth_id 关联），否则用邮箱前缀
   // ---------- 轻量本地缓存（Stale-While-Revalidate） ----------
   // 【v44】Supabase API 走第三方域名、SW 不缓存，冷启动每次直连东京。
   // 这里在应用层用 localStorage 缓存列表/统计结果：先返回缓存秒显，后台刷新写回。
@@ -42,14 +42,14 @@
     return fresh;
   }
 
-  async function myDisplayName() {
+    async function myDisplayName() {
     const uid = (await client.auth.getUser()).data.user?.id;
     if (!uid) return '';
     try {
       const { data } = await client
-        .from('designers').select('name').eq('auth_id', uid).maybeSingle();
+        .from('dr_members').select('name').eq('auth_id', uid).maybeSingle();
       if (data && data.name) return data.name;
-    } catch (e) { /* designers 表不存在也不影响平台使用 */ }
+    } catch (e) { /* dr_members 表不存在也不影响平台使用 */ }
     const email = (await client.auth.getUser()).data.user?.email || '';
     return email.split('@')[0] || '设计师';
   }
@@ -64,18 +64,18 @@
     async signIn(email, password) {
       return client.auth.signInWithPassword({ email, password });
     },
-    // 注册时把真实姓名写入 designers 展示名；先尝试直接 upsert，失败则走兜底 RPC
-    async updateDisplayName(uid, name) {
+    // 注册时把真实姓名写入 dr_members 展示名（不再污染工作台 designers 表）；先直连 upsert，失败走兜底 RPC
+    async updateDisplayName(uid, name, email) {
       if (!uid || !name) return { ok: false, msg: '参数缺失' };
       try {
         const { error } = await client
-          .from('designers').upsert({ auth_id: uid, name: name }, { onConflict: 'auth_id' });
+          .from('dr_members').upsert({ auth_id: uid, name: name, email: email || null }, { onConflict: 'auth_id' });
         if (error) throw error;
         return { ok: true };
       } catch (e) {
-        // 兜底：若 designers 表 RLS 不允许直接写，用管理员级 RPC
-        const { data, error } = await client.rpc('dr_update_display_name', {
-          p_uid: uid, p_name: name
+        // 兜底：若 dr_members 表 RLS 不允许直接写，用管理员级 RPC
+        const { data, error } = await client.rpc('dr_update_member_name', {
+          p_uid: uid, p_name: name, p_email: email || null
         });
         if (error) throw error;
         return data;
@@ -310,11 +310,11 @@
         !c.used_at && (c.expire_at == null || new Date(c.expire_at).getTime() > now)
       );
     },
-    // 选人器：按姓名/邮箱模糊搜索设计师（读 designers，RLS 对所有人开放 select=true）
-    // 返回 [{auth_id, name, email, role}]，用于后台发券定向指定会员
+    // 选人器：按姓名/邮箱模糊搜索平台会员（读 dr_members，RLS 对登录用户开放 select）
+    // 返回 [{auth_id, name, email}]，用于后台发券定向指定会员
     async listDesignersForPicker(q) {
       try {
-        let qb = client.from('designers').select('auth_id,name,email,role');
+        let qb = client.from('dr_members').select('auth_id,name,email');
         const safe = (q || '').replace(/[%_'"]/g, '').trim();
         if (safe) {
           qb = qb.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
@@ -324,12 +324,12 @@
         return (data || []).filter(d => d.auth_id);
       } catch (e) { return []; }
     },
-    // 按 auth_id 取单个设计师（编辑专属券时回填姓名）
-    async getDesignerByAuthId(authId) {
+    // 按 auth_id 取单个会员（编辑专属券时回填姓名）；会员表已迁至 dr_members
+    async getMemberByAuthId(authId) {
       if (!authId) return null;
       try {
-        const { data, error } = await client.from('designers')
-          .select('auth_id,name,email,role').eq('auth_id', authId).maybeSingle();
+        const { data, error } = await client.from('dr_members')
+          .select('auth_id,name,email').eq('auth_id', authId).maybeSingle();
         if (error) throw error;
         return data || null;
       } catch (e) { return null; }
